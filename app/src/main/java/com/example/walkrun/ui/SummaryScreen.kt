@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
@@ -150,6 +151,18 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
                             "הושווה ל: ${WorkoutType.from(it.type).label} מתאריך ${Format.date(it.startTime)}",
                             style = MaterialTheme.typography.bodySmall
                         )
+                    }
+                }
+            }
+
+            if (w.records.isNotEmpty()) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3C4))
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("🏆 שיא אישי חדש", fontWeight = FontWeight.Bold)
+                        w.records.forEach { Text("${it.label}: ${it.display(w)}") }
                     }
                 }
             }

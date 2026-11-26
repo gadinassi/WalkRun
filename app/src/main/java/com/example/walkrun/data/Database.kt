@@ -52,6 +52,12 @@ interface WorkoutDao {
     )
     suspend fun history(type: String, from: Long, before: Long): List<WorkoutEntity>
 
+    @Query("SELECT * FROM workouts WHERE type = :type")
+    suspend fun ofType(type: String): List<WorkoutEntity>
+
+    @Query("SELECT * FROM workouts WHERE bestsDone = 0")
+    suspend fun withoutBests(): List<WorkoutEntity>
+
     /** All workouts that started in [from, before). Oldest first. */
     @Query("SELECT * FROM workouts WHERE startTime >= :from AND startTime < :before ORDER BY startTime")
     suspend fun between(from: Long, before: Long): List<WorkoutEntity>
@@ -64,7 +70,7 @@ interface WorkoutDao {
     suspend fun delete(id: Long)
 }
 
-@Database(entities = [WorkoutEntity::class, TrackPointEntity::class], version = 2, exportSchema = false)
+@Database(entities = [WorkoutEntity::class, TrackPointEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
 
@@ -76,9 +82,20 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 3: best times and personal records. The values are filled in later from the points. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("best1kMs", "best5kMs", "best10kMs", "bestHalfMs").forEach {
+                    db.execSQL("ALTER TABLE workouts ADD COLUMN $it INTEGER")
+                }
+                db.execSQL("ALTER TABLE workouts ADD COLUMN bestsDone INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN newRecords TEXT")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "walkrun.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

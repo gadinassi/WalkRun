@@ -1,5 +1,6 @@
 package com.example.walkrun.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -45,8 +46,28 @@ data class WorkoutEntity(
     val trend: String? = null,
     val trendText: String? = null,
     /** Name of the route, set by the user. Shared by all workouts of the same route. */
-    val title: String? = null
+    val title: String? = null,
+    /** Fastest active time for the distance inside this workout. Null = the workout is shorter. */
+    val best1kMs: Long? = null,
+    val best5kMs: Long? = null,
+    val best10kMs: Long? = null,
+    val bestHalfMs: Long? = null,
+    /** True after the best times were calculated from the points. */
+    @ColumnInfo(defaultValue = "0") val bestsDone: Boolean = false,
+    /** Personal records set by this workout: RecordKind names, comma-separated. */
+    val newRecords: String? = null
 ) {
+    fun bestMs(kind: RecordKind): Long? = when (kind) {
+        RecordKind.KM1 -> best1kMs
+        RecordKind.KM5 -> best5kMs
+        RecordKind.KM10 -> best10kMs
+        RecordKind.HALF -> bestHalfMs
+        else -> null
+    }
+
+    val records: List<RecordKind>
+        get() = newRecords?.split(',')?.mapNotNull { n -> RecordKind.entries.firstOrNull { it.name == n } } ?: emptyList()
+
     /** ID of the first workout of this route. Workouts of the same route share it. */
     val routeRootId: Long get() = routeId ?: id
 }

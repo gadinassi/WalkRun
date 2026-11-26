@@ -58,7 +58,11 @@ fun AppNav(app: WalkRunApp) {
         nav.popBackStack("home", inclusive = false)
     }
     // The weekly report alarm. Setting it again is harmless; it keeps it after an update.
-    LaunchedEffect(Unit) { WeeklyReportReceiver.schedule(context) }
+    LaunchedEffect(Unit) {
+        WeeklyReportReceiver.schedule(context)
+        // Best times of workouts saved before personal records existed.
+        runCatching { app.workouts.backfillBests() }
+    }
 
     NavHost(navController = nav, startDestination = startRoute) {
         composable("login") {
@@ -71,8 +75,12 @@ fun AppNav(app: WalkRunApp) {
                 app = app,
                 onOpenWorkout = { nav.navigate("summary/$it") },
                 onSettings = { nav.navigate("settings") },
-                onRecording = { nav.navigate("record") { launchSingleTop = true } }
+                onRecording = { nav.navigate("record") { launchSingleTop = true } },
+                onRecords = { nav.navigate("records") }
             )
+        }
+        composable("records") {
+            RecordsScreen(app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") })
         }
         composable("record") {
             RecordScreen(onBack = { nav.popBackStack() })

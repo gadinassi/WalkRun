@@ -43,14 +43,28 @@ class WorkoutRepository(private val db: AppDatabase) {
         return result
     }
 
-    /** Saves the workout and its points, then calculates and stores the trend. */
+    /** Calculates the best times of workouts saved before version 3. Runs one time per workout. */
+    suspend fun backfillBests() {
+        for (w in dao.withoutBests()) {
+            val points = dao.getPoints(w.id)
+            dao.updateWorkout(withContext(Dispatchers.Default) { BestEfforts.fill(w, points) })
+        }
+    }
+
+    suspend fun ofType(type: String): List<WorkoutEntity> = dao.ofType(type)
+
+    /** Saves the workout and its points, then calculates the trend and the new personal records. */
     suspend fun save(workout: WorkoutEntity, points: List<TrackPointEntity>): Long {
+        backfillBests() // The record check needs the best times of all earlier workouts.
+        val withBests = withContext(Dispatchers.Default) { BestEfforts.fill(workout, points) }
         val id = db.withTransaction {
-            val newId = dao.insertWorkout(workout)
+            val newId = dao.insertWorkout(withBests)
             if (points.isNotEmpty()) dao.insertPoints(points.map { it.copy(workoutId = newId) })
             newId
         }
-        val saved = workout.copy(id = id)
+        val others = dao.ofType(workout.type).filter { it.id != id }
+        val records = RecordBook.newIn(withBests, others)
+        val saved = withBests.copy(id = id, newRecords = records.joinToString(",") { it.name }.ifEmpty { null })
         val route = saved.routeId
         // Skip workouts too short to compare (for example, stopped right after start).
         val minM = TrendCalculator.MIN_DISTANCE_M

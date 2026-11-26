@@ -16,6 +16,7 @@ import com.example.walkrun.MainActivity
 import com.example.walkrun.WalkRunApp
 import com.example.walkrun.data.Account
 import com.example.walkrun.data.SplitUnit
+import com.example.walkrun.data.Week
 import com.example.walkrun.data.WorkoutEntity
 import com.example.walkrun.data.WorkoutType
 import com.example.walkrun.util.Format
@@ -50,10 +51,13 @@ object Reports {
     /** Null when there were no workouts in the last two weeks. */
     suspend fun weekly(context: Context, app: WalkRunApp): Email? = withContext(Dispatchers.IO) {
         val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
-        val start = today.minusDays(6) // The 7 days that end today.
+        val now = LocalDate.now(zone)
+        // Week = Sunday to Saturday, like the goal. On Sunday the report is for the week that just ended.
+        val start = if (now.dayOfWeek == java.time.DayOfWeek.SUNDAY) now.minusDays(7) else Week.startOf(now)
+        val today = minOf(start.plusDays(6), now) // Last day with data, for the title.
         fun ms(d: LocalDate) = d.atStartOfDay(zone).toInstant().toEpochMilli()
-        val end = ms(today.plusDays(1))
+        val end = ms(start.plusDays(7))
+        val goalKm = app.settings.reports.first().weeklyGoalKm
         val thisWeek = app.workouts.between(ms(start), end)
         val lastWeek = app.workouts.between(ms(start.minusDays(7)), ms(start))
         if (thisWeek.isEmpty() && lastWeek.isEmpty()) return@withContext null
@@ -97,6 +101,21 @@ object Reports {
 
         val body = buildString {
             appendLine("סטטיסטיקה שבועית: ${start.format(DAY_FMT)} – ${today.format(DAY_FMT)}")
+            appendLine()
+            if (goalKm > 0) {
+                val done = thisWeek.sumOf { it.distanceM } / 1000
+                val pct = (done / goalKm * 100).roundToInt()
+                appendLine(
+                    if (done >= goalKm) "🎯 יעד שבועי: הושג! ${String.format(Locale.US, "%.1f", done)} מתוך ${String.format(Locale.US, "%.1f", goalKm)} ק\"מ ($pct%)"
+                    else "🎯 יעד שבועי: ${String.format(Locale.US, "%.1f", done)} מתוך ${String.format(Locale.US, "%.1f", goalKm)} ק\"מ ($pct%)"
+                )
+            }
+            val weekRecords = thisWeek.flatMap { w -> w.records.map { it to w } }
+            if (weekRecords.isNotEmpty()) {
+                appendLine("🏆 שיאים אישיים השבוע: " + weekRecords.joinToString(", ") { (k, w) ->
+                    "${k.label} ${WorkoutType.from(w.type).label} – ${k.display(w)}"
+                })
+            }
             appendLine()
             appendLine(summaryLine("אימונים", thisWeek.size.toDouble(), lastWeek.size.toDouble()) { it.roundToInt().toString() })
             appendLine(summaryLine("מרחק (ק\"מ)", thisWeek.sumOf { it.distanceM } / 1000, lastWeek.sumOf { it.distanceM } / 1000) {
@@ -160,8 +179,13 @@ object Reports {
             ) { Format.pace(it) }
         }
         val body = buildString {
-            appendLine("שיפור! ${w.title?.let { "$it · " } ?: ""}${WorkoutType.from(w.type).label} ב-${Format.date(w.startTime)}")
+            val headline = if (w.records.isNotEmpty()) "שיא אישי חדש!" else "שיפור!"
+            appendLine("$headline ${w.title?.let { "$it · " } ?: ""}${WorkoutType.from(w.type).label} ב-${Format.date(w.startTime)}")
             appendLine()
+            if (w.records.isNotEmpty()) {
+                w.records.forEach { appendLine("🏆 ${it.label}: ${it.display(w)}") }
+                appendLine()
+            }
             w.trendText?.let { appendLine(it); appendLine() }
             appendLine("האימון: ${workoutLine(w)}")
             prev?.let { appendLine("הקודם: ${workoutLine(it)}") }
@@ -178,7 +202,8 @@ object Reports {
             appendLine()
             appendLine("נשלח מ-WalkRun.")
         }
-        Email("WalkRun – שיפור ב${WorkoutType.from(w.type).label} ${Format.date(w.startTime).take(10)}", body, images)
+        val what = if (w.records.isNotEmpty()) "שיא אישי" else "שיפור"
+        Email("WalkRun – $what ב${WorkoutType.from(w.type).label} ${Format.date(w.startTime).take(10)}", body, images)
     }
 
     // ---------------- Delivery ----------------
@@ -201,7 +226,7 @@ object Reports {
 
     suspend fun notifyImprovement(context: Context, app: WalkRunApp, w: WorkoutEntity) {
         val email = improvement(context, app, w)
-        notify(context, NOTIFY_IMPROVED, "כל הכבוד, שיפור!", "לחץ כדי לשלוח את הדוח והגרף למייל.", emailIntent(context, app, email))
+        notify(context, NOTIFY_IMPROVED, if (w.records.isNotEmpty()) "🏆 שיא אישי חדש!" else "כל הכבוד, שיפור!","לחץ כדי לשלוח את הדוח והגרף למייל.", emailIntent(context, app, email))
     }
 
     private suspend fun emailIntent(context: Context, app: WalkRunApp, email: Email): Intent {

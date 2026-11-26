@@ -28,6 +28,7 @@ import com.example.walkrun.data.AnnounceSettings
 import android.util.Log
 import com.example.walkrun.data.TrackPointEntity
 import com.example.walkrun.data.Trend
+import com.example.walkrun.data.Week
 import com.example.walkrun.report.Reports
 import com.example.walkrun.data.UserProfile
 import com.example.walkrun.data.WorkoutEntity
@@ -137,6 +138,10 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private var lastGhostAlert = 0L
     private var lastOffRouteAlert = 0L
     private var lastStatusAnnounce = 0L
+    /** Weekly goal and the distance of this week's saved workouts, in meters. 0 = no goal. */
+    private var goalM = 0.0
+    private var weekDoneM = 0.0
+    private var goalAnnounced = false
 
     private var tickJob: Job? = null
     private var stopJob: Job? = null
@@ -199,11 +204,17 @@ class TrackingService : LifecycleService(), SensorEventListener {
         useStepSensor = false; stepsAccum = 0; lastStepCounter = null
         hasBarometer = false; baroAlt = null; elevation = ElevationGainTracker(4.0)
         ghostState = 0; lastGhostAlert = 0L; lastOffRouteAlert = 0L; lastStatusAnnounce = 0L
+        goalM = 0.0; weekDoneM = 0.0; goalAnnounced = false
     }
 
     private suspend fun begin(requestedGhostId: Long?) {
         profile = app.settings.profile.first()
         announce = app.settings.announce.first()
+        goalM = app.settings.reports.first().weeklyGoalKm * 1000.0
+        if (goalM > 0) {
+            val (from, to) = Week.currentRange()
+            weekDoneM = app.workouts.between(from, to).sumOf { it.distanceM }
+        }
         if (requestedGhostId != null) {
             val ref = app.workouts.getWorkout(requestedGhostId)
             val refPoints = app.workouts.getPoints(requestedGhostId)
@@ -309,8 +320,15 @@ class TrackingService : LifecycleService(), SensorEventListener {
         status = TrackingStatus.IDLE
         TrackingStore.update(TrackingSnapshot(lastSavedWorkoutId = id))
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}")
-        if (saved != null && saved.trend == Trend.IMPROVED.name && reports.onImprovement) {
+        val records = saved?.records.orEmpty()
+        val recordText = if (records.isEmpty()) "" else
+            " שיא אישי חדש! " + records.joinToString(". ") { "${it.speech}: ${it.spoken(saved!!)}" } + "."
+        val goalText = if (goalM > 0) {
+            val left = goalM - weekDoneM - distanceM
+            if (left > 0) " ליעד השבועי נותרו ${Format.distanceSpeech(left)}." else ""
+        } else ""
+        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$goalText")
+        if (saved != null && reports.onImprovement && (saved.trend == Trend.IMPROVED.name || records.isNotEmpty())) {
             runCatching { Reports.notifyImprovement(this, app, saved) }
                 .onFailure { Log.w("Reports", "Improvement report failed", it) }
         }
@@ -370,6 +388,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         accept(loc, alt, elapsed, v)
         checkGhost(loc)
         checkDistanceAnnouncement()
+        checkWeeklyGoal()
     }
 
     private fun accept(loc: Location, alt: Double?, elapsed: Long, speed: Double) {
@@ -498,6 +517,14 @@ class TrackingService : LifecycleService(), SensorEventListener {
         speakStatus()
     }
 
+    /** One announcement when this workout brings the week to the goal. */
+    private fun checkWeeklyGoal() {
+        if (goalM <= 0 || goalAnnounced || weekDoneM >= goalM) return
+        if (weekDoneM + distanceM < goalM) return
+        goalAnnounced = true
+        voice.speak("כל הכבוד! הגעת ליעד השבועי של ${Format.kmSpeech(goalM)} קילומטר.")
+    }
+
     private fun checkTimeAnnouncement() {
         if (!announce.enabled || !announce.byTime) return
         val e = elapsedMs()
@@ -545,6 +572,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
             )
         }
         ghostDiffMs(e)?.let { sb.append(ghostPhrase(it)) }
+        val toGoal = goalM - weekDoneM - distanceM
+        if (goalM > 0 && toGoal > 0) sb.append("ליעד השבועי נותרו ${Format.distanceSpeech(toGoal)}. ")
         return sb.toString()
     }
 

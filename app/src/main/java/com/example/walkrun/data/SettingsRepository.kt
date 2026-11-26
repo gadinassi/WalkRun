@@ -47,7 +47,9 @@ data class AnnounceSettings(
 data class ReportSettings(
     val minSaveKm: Double = 0.2,
     val weekly: Boolean = true,
-    val onImprovement: Boolean = true
+    val onImprovement: Boolean = true,
+    /** Weekly distance goal, Sunday to Saturday. 0 = no goal. */
+    val weeklyGoalKm: Double = 0.0
 )
 
 data class Account(val name: String, val email: String) {
@@ -76,6 +78,7 @@ class SettingsRepository(private val context: Context) {
         val MIN_SAVE_KM = doublePreferencesKey("min_save_km")
         val REPORT_WEEKLY = booleanPreferencesKey("report_weekly")
         val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
+        val WEEKLY_GOAL_KM = doublePreferencesKey("weekly_goal_km")
         val NAME = stringPreferencesKey("account_name")
         val EMAIL = stringPreferencesKey("account_email")
     }
@@ -114,7 +117,8 @@ class SettingsRepository(private val context: Context) {
         ReportSettings(
             minSaveKm = p[Keys.MIN_SAVE_KM] ?: rd.minSaveKm,
             weekly = p[Keys.REPORT_WEEKLY] ?: rd.weekly,
-            onImprovement = p[Keys.REPORT_IMPROVE] ?: rd.onImprovement
+            onImprovement = p[Keys.REPORT_IMPROVE] ?: rd.onImprovement,
+            weeklyGoalKm = p[Keys.WEEKLY_GOAL_KM] ?: rd.weeklyGoalKm
         )
     }
 
@@ -123,6 +127,7 @@ class SettingsRepository(private val context: Context) {
             it[Keys.MIN_SAVE_KM] = settings.minSaveKm
             it[Keys.REPORT_WEEKLY] = settings.weekly
             it[Keys.REPORT_IMPROVE] = settings.onImprovement
+            it[Keys.WEEKLY_GOAL_KM] = settings.weeklyGoalKm
         }
     }
 
