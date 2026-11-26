@@ -45,6 +45,8 @@ import com.example.walkrun.data.WorkoutEntity
 import com.example.walkrun.data.TrackPointEntity
 import com.example.walkrun.data.Analysis
 import androidx.compose.material3.FilterChip
+import androidx.compose.ui.platform.LocalContext
+import com.example.walkrun.report.GpxExport
 import com.example.walkrun.data.WorkoutType
 import com.example.walkrun.tracking.LatLon
 import com.example.walkrun.tracking.TrackingStatus
@@ -69,6 +71,7 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
     var editTitle by remember { mutableStateOf(false) }
     var titleDraft by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val tracking by TrackingStore.state.collectAsStateWithLifecycle()
     val start = rememberWorkoutStarter(onRecording)
 
@@ -197,6 +200,13 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
                 enabled = tracking.status == TrackingStatus.IDLE && segments.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) { Text("חזור על המסלול והשווה") }
+
+            if (points.size > 1) {
+                OutlinedButton(
+                    onClick = { GpxExport.share(context, w, points) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("ייצוא GPX (Strava, Garmin)") }
+            }
 
             OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
                 Text("מחיקת הפעילות")

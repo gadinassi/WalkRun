@@ -52,6 +52,9 @@ interface WorkoutDao {
     )
     suspend fun history(type: String, from: Long, before: Long): List<WorkoutEntity>
 
+    @Query("SELECT * FROM workouts ORDER BY startTime")
+    suspend fun allOnce(): List<WorkoutEntity>
+
     @Query("SELECT * FROM workouts WHERE type = :type")
     suspend fun ofType(type: String): List<WorkoutEntity>
 

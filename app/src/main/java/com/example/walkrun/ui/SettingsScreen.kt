@@ -46,6 +46,8 @@ import com.example.walkrun.data.TrainingSettings
 import com.example.walkrun.data.Sex
 import com.example.walkrun.report.Reports
 import com.example.walkrun.report.GmailSender
+import com.example.walkrun.report.HealthSync
+import androidx.health.connect.client.PermissionController
 import android.app.Activity
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -106,6 +108,21 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var restTime by remember { mutableStateOf("") }
     var repeats by remember { mutableStateOf("") }
     var autoGmail by remember { mutableStateOf(false) }
+    val healthOn by app.settings.healthConnect.collectAsStateWithLifecycle(initialValue = false)
+    // Health Connect permission screen. After approval, all saved workouts are written once.
+    val healthPermission = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        if (granted.containsAll(HealthSync.PERMISSIONS)) {
+            scope.launch {
+                app.settings.setHealthConnect(true)
+                val n = HealthSync.writeAll(app)
+                Toast.makeText(context, "Health Connect מחובר. נכתבו $n אימונים.", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            Toast.makeText(context, "לא ניתנה הרשאה ל-Health Connect.", Toast.LENGTH_LONG).show()
+        }
+    }
     var gmailBusy by remember { mutableStateOf(false) }
     // The Google approval window for the gmail.send scope.
     val approval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
@@ -317,6 +334,27 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                                 Log.w("GmailSender", "Authorize failed", e)
                                 Toast.makeText(context, "ההרשאה נכשלה: ${e.message}", Toast.LENGTH_LONG).show()
                             }
+                        }
+                    }
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("סנכרון ל-Health Connect")
+                    Text(
+                        "אימונים, מרחק, צעדים וקלוריות יופיעו גם ב-Google Fit ובאפליקציות בריאות.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = healthOn,
+                    onCheckedChange = { on ->
+                        if (!on) {
+                            scope.launch { app.settings.setHealthConnect(false) }
+                        } else if (!HealthSync.available(context)) {
+                            Toast.makeText(context, "Health Connect לא זמין במכשיר.", Toast.LENGTH_LONG).show()
+                        } else {
+                            healthPermission.launch(HealthSync.PERMISSIONS)
                         }
                     }
                 )

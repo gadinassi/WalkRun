@@ -69,4 +69,6 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     // Authorization for the Gmail send scope (automatic report emails).
     implementation("com.google.android.gms:play-services-auth:21.3.0")
+    // Health Connect: workouts, distance, steps and calories also appear in Google Fit and other apps.
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
 }

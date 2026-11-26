@@ -53,6 +53,8 @@ class WorkoutRepository(private val db: AppDatabase) {
 
     suspend fun ofType(type: String): List<WorkoutEntity> = dao.ofType(type)
 
+    suspend fun allOnce(): List<WorkoutEntity> = dao.allOnce()
+
     /** Saves the workout and its points, then calculates the trend and the new personal records. */
     suspend fun save(workout: WorkoutEntity, points: List<TrackPointEntity>): Long {
         backfillBests() // The record check needs the best times of all earlier workouts.

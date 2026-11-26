@@ -109,6 +109,7 @@ class SettingsRepository(private val context: Context) {
         val THEME = stringPreferencesKey("theme_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause")
+        val HEALTH_CONNECT = booleanPreferencesKey("health_connect")
         val PACE_ALERT = booleanPreferencesKey("pace_alert")
         val SLOW_PACE = intPreferencesKey("pace_alert_slow_sec")
         val FAST_PACE = intPreferencesKey("pace_alert_fast_sec")
@@ -210,6 +211,13 @@ class SettingsRepository(private val context: Context) {
             it[Keys.THEME] = settings.theme.name
             it[Keys.KEEP_SCREEN_ON] = settings.keepScreenOn
         }
+    }
+
+    /** Write each saved workout to Health Connect. */
+    val healthConnect: Flow<Boolean> = context.dataStore.data.map { it[Keys.HEALTH_CONNECT] ?: false }
+
+    suspend fun setHealthConnect(on: Boolean) {
+        context.dataStore.edit { it[Keys.HEALTH_CONNECT] = on }
     }
 
     suspend fun setAutoGmail(on: Boolean) {
