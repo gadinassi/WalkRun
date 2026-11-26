@@ -25,6 +25,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.walkrun.report.WeeklyReportReceiver
 import java.util.Locale
 import com.example.walkrun.data.DisplaySettings
+import com.example.walkrun.StartRequest
+import com.example.walkrun.data.WorkoutType
+import com.example.walkrun.report.WalkRunWidget
+import com.example.walkrun.tracking.TrackingStatus
 
 @Composable
 fun AppNav(app: WalkRunApp) {
@@ -59,7 +63,17 @@ fun AppNav(app: WalkRunApp) {
         nav.popBackStack("home", inclusive = false)
     }
     // The weekly report alarm. Setting it again is harmless; it keeps it after an update.
+    // The widget ▶: start a workout (asks for permissions first when needed).
+    val starter = rememberWorkoutStarter { nav.navigate("record") { launchSingleTop = true } }
+    val startRequested by StartRequest.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(startRequested) {
+        if (!startRequested) return@LaunchedEffect
+        StartRequest.pending.value = false
+        if (TrackingStore.state.value.status == TrackingStatus.IDLE) starter(WorkoutType.WALK, null)
+        else nav.navigate("record") { launchSingleTop = true }
+    }
     LaunchedEffect(Unit) {
+        WalkRunWidget.refresh(context)
         WeeklyReportReceiver.schedule(context)
         // Best times of workouts saved before personal records existed.
         runCatching { app.workouts.backfillBests() }
@@ -85,7 +99,13 @@ fun AppNav(app: WalkRunApp) {
             StatsScreen(app, onBack = { nav.popBackStack() })
         }
         composable("records") {
-            RecordsScreen(app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") })
+            RecordsScreen(
+                app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") },
+                onSegments = { nav.navigate("segments") }
+            )
+        }
+        composable("segments") {
+            SegmentsScreen(app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") })
         }
         composable("record") {
             val display by app.settings.display.collectAsStateWithLifecycle(initialValue = DisplaySettings())

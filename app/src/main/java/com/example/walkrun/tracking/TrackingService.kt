@@ -32,6 +32,7 @@ import com.example.walkrun.data.Trend
 import com.example.walkrun.data.Week
 import com.example.walkrun.report.Reports
 import com.example.walkrun.report.HealthSync
+import com.example.walkrun.report.WalkRunWidget
 import com.example.walkrun.data.UserProfile
 import com.example.walkrun.data.WorkoutEntity
 import com.example.walkrun.data.WorkoutType
@@ -377,12 +378,17 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val records = saved?.records.orEmpty()
         val recordText = if (records.isEmpty()) "" else
             " שיא אישי חדש! " + records.joinToString(". ") { "${it.speech}: ${it.spoken(saved!!)}" } + "."
+        val segmentText = saved?.let { w ->
+            runCatching { app.workouts.segmentRecords(w) }.getOrDefault(emptyList())
+                .joinToString("") { (s, ms) -> " שיא חדש בקטע ${s.name}: ${Format.durationSpeech(ms)}." }
+        }.orEmpty()
         val goalText = if (goalM > 0) {
             val left = goalM - weekDoneM - distanceM
             if (left > 0) " ליעד השבועי נותרו ${Format.distanceSpeech(left)}." else ""
         } else ""
-        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$goalText")
+        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$segmentText$goalText")
         saved?.let { HealthSync.afterSave(app, it) }
+        WalkRunWidget.refresh(this)
         if (saved != null && reports.onImprovement && (saved.trend == Trend.IMPROVED.name || records.isNotEmpty())) {
             runCatching { Reports.notifyImprovement(this, app, saved) }
                 .onFailure { Log.w("Reports", "Improvement report failed", it) }

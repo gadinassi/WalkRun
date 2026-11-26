@@ -46,6 +46,7 @@ import com.example.walkrun.data.TrackPointEntity
 import com.example.walkrun.data.Analysis
 import androidx.compose.material3.FilterChip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
 import com.example.walkrun.report.GpxExport
 import com.example.walkrun.data.WorkoutType
 import com.example.walkrun.tracking.LatLon
@@ -65,6 +66,8 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
     var segments by remember { mutableStateOf<List<List<LatLon>>>(emptyList()) }
     var points by remember { mutableStateOf<List<TrackPointEntity>>(emptyList()) }
     var heatMap by remember { mutableStateOf(false) }
+    /** Part of the route chosen for a new segment (meters from the start), shown in orange. */
+    var segRange by remember { mutableStateOf<ClosedFloatingPointRange<Float>?>(null) }
     var compared by remember { mutableStateOf<WorkoutEntity?>(null) }
     var notFound by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -111,6 +114,7 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val routeColor = MaterialTheme.colorScheme.primary.toArgb()
             if (segments.isNotEmpty()) {
                 // Pace heat map: each ~100 m piece colored by its pace against the workout average.
                 val heat = remember(points) {
@@ -123,7 +127,12 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
                     reference = emptyList(),
                     followLast = false,
                     modifier = Modifier.fillMaxWidth().height(260.dp),
-                    colored = if (heatMap) heat else null
+                    colored = segRange?.let { r ->
+                        // The whole route in the theme color, and the chosen part in orange on top.
+                        segments.map { it to routeColor } + listOf(
+                            points.filter { it.distanceM in r.start..r.endInclusive }.map { LatLon(it.lat, it.lon) } to 0xFFFF8F00.toInt()
+                        )
+                    } ?: if (heatMap) heat else null
                 )
                 if (heat != null && heat.size > 1) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,6 +203,9 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
 
             val profile = remember(points) { Analysis.elevationProfile(points) }
             ElevationCard(profile, w.elevationGainM)
+
+            WorkoutSegmentsCard(app, w)
+            CreateSegmentCard(app, points) { segRange = it }
 
             Button(
                 onClick = { start(WorkoutType.from(w.type), w.id) },

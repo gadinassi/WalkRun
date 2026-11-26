@@ -71,9 +71,21 @@ interface WorkoutDao {
 
     @Query("DELETE FROM workouts WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Insert
+    suspend fun insertSegment(s: SegmentEntity): Long
+
+    @Query("SELECT * FROM route_segments ORDER BY createdAt")
+    fun observeSegments(): Flow<List<SegmentEntity>>
+
+    @Query("SELECT * FROM route_segments ORDER BY createdAt")
+    suspend fun segmentsOnce(): List<SegmentEntity>
+
+    @Query("DELETE FROM route_segments WHERE id = :id")
+    suspend fun deleteSegment(id: Long)
 }
 
-@Database(entities = [WorkoutEntity::class, TrackPointEntity::class], version = 3, exportSchema = false)
+@Database(entities = [WorkoutEntity::class, TrackPointEntity::class, SegmentEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
 
@@ -96,9 +108,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 4: route segments (the times on them are calculated from the points, not stored). */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS route_segments (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, " +
+                        "startLat REAL NOT NULL, startLon REAL NOT NULL, endLat REAL NOT NULL, endLon REAL NOT NULL, " +
+                        "lengthM REAL NOT NULL, createdAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "walkrun.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

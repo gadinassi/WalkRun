@@ -64,6 +64,18 @@
             </intent-filter>
         </activity-alias>
 
+        <receiver
+            android:name=".report.WalkRunWidget"
+            android:exported="false"
+            android:label="WalkRun">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
+
         <!-- Weekly report alarm. Exported only for the system boot / update broadcasts. -->
         <receiver
             android:name=".report.WeeklyReportReceiver"

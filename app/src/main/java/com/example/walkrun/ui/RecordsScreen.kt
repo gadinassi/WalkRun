@@ -33,14 +33,15 @@ import com.example.walkrun.util.Format
 /** Personal records per workout type. A tap on a record opens its workout. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecordsScreen(app: WalkRunApp, onBack: () -> Unit, onOpenWorkout: (Long) -> Unit) {
+fun RecordsScreen(app: WalkRunApp, onBack: () -> Unit, onOpenWorkout: (Long) -> Unit, onSegments: () -> Unit) {
     val workouts by app.workouts.all.collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("שיאים אישיים") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("חזרה") } }
+                navigationIcon = { TextButton(onClick = onBack) { Text("חזרה") } },
+                actions = { TextButton(onClick = onSegments) { Text("קטעים ›") } }
             )
         }
     ) { padding ->

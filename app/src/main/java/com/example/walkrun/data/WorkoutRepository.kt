@@ -19,6 +19,7 @@ class WorkoutRepository(private val db: AppDatabase) {
     suspend fun delete(id: Long) {
         dao.delete(id)
         synchronized(splitCache) { splitCache.keys.removeAll { it.first == id } }
+        clearEffortCache()
     }
 
     /** Empty or blank text removes the title. */
@@ -55,6 +56,41 @@ class WorkoutRepository(private val db: AppDatabase) {
 
     suspend fun allOnce(): List<WorkoutEntity> = dao.allOnce()
 
+    // ---------------- Segments ----------------
+
+    val segments: Flow<List<SegmentEntity>> = dao.observeSegments()
+
+    suspend fun addSegment(s: SegmentEntity): Long = dao.insertSegment(s).also { clearEffortCache() }
+
+    suspend fun deleteSegment(id: Long) {
+        dao.deleteSegment(id)
+        clearEffortCache()
+    }
+
+    /** Best time of each workout on the segment, fastest first. Cached until a workout or segment changes. */
+    private val effortCache = HashMap<Long, List<SegmentEffort>>()
+
+    private fun clearEffortCache() = synchronized(effortCache) { effortCache.clear() }
+
+    suspend fun efforts(s: SegmentEntity): List<SegmentEffort> {
+        synchronized(effortCache) { effortCache[s.id] }?.let { return it }
+        val result = withContext(Dispatchers.Default) {
+            dao.allOnce().mapNotNull { w ->
+                SegmentMatcher.bestTime(s, dao.getPoints(w.id))?.let { SegmentEffort(w, it) }
+            }.sortedBy { it.timeMs }
+        }
+        synchronized(effortCache) { effortCache[s.id] = result }
+        return result
+    }
+
+    /** Segments where [w] set the best time (and at least one earlier pass existed). */
+    suspend fun segmentRecords(w: WorkoutEntity): List<Pair<SegmentEntity, Long>> =
+        dao.segmentsOnce().mapNotNull { s ->
+            val all = efforts(s)
+            val mine = all.firstOrNull { it.workout.id == w.id } ?: return@mapNotNull null
+            if (all.size > 1 && all.first().workout.id == w.id) s to mine.timeMs else null
+        }
+
     /** Saves the workout and its points, then calculates the trend and the new personal records. */
     suspend fun save(workout: WorkoutEntity, points: List<TrackPointEntity>): Long {
         backfillBests() // The record check needs the best times of all earlier workouts.
@@ -75,6 +111,7 @@ class WorkoutRepository(private val db: AppDatabase) {
         } else {
             dao.previousOfType(saved.type, id, saved.startTime, minM)
         }
+        clearEffortCache() // The new workout can have segment times.
         val (trend, text) = TrendCalculator.compare(saved, previous)
         dao.updateWorkout(saved.copy(comparedToId = previous?.id, trend = trend.name, trendText = text))
         return id

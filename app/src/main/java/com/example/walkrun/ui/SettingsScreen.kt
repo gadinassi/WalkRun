@@ -48,6 +48,7 @@ import com.example.walkrun.report.Reports
 import com.example.walkrun.report.GmailSender
 import com.example.walkrun.report.HealthSync
 import com.example.walkrun.report.DriveBackup
+import com.example.walkrun.report.WalkRunWidget
 import com.example.walkrun.report.GoogleAccess
 import com.example.walkrun.util.Format
 import androidx.compose.material3.AlertDialog
@@ -536,6 +537,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                         )
                     )
                     app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove, g!!, autoGmail))
+                    WalkRunWidget.refresh(context)
                     Toast.makeText(context, "ההגדרות נשמרו.", Toast.LENGTH_SHORT).show()
                     onBack()
                 }

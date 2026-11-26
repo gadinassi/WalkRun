@@ -1,6 +1,9 @@
 package com.example.walkrun
 
+import android.content.Intent
 import android.graphics.Color
+import com.example.walkrun.report.WalkRunWidget
+import kotlinx.coroutines.flow.MutableStateFlow
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -26,6 +29,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val app = application as WalkRunApp
+        takeStartRequest(intent)
         setContent {
             val display by app.settings.display.collectAsStateWithLifecycle(initialValue = DisplaySettings())
             WalkRunTheme(display.theme) {
@@ -44,4 +48,22 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeStartRequest(intent)
+    }
+
+    /** The ▶ of the home screen widget: start a workout once the app is shown. */
+    private fun takeStartRequest(intent: Intent?) {
+        if (intent?.getBooleanExtra(WalkRunWidget.EXTRA_START, false) == true) {
+            intent.removeExtra(WalkRunWidget.EXTRA_START)
+            StartRequest.pending.value = true
+        }
+    }
+}
+
+/** A start request from outside the app (the widget). AppNav starts the workout and clears it. */
+object StartRequest {
+    val pending = MutableStateFlow(false)
 }
