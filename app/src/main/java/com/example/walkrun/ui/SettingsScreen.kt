@@ -42,6 +42,12 @@ import com.example.walkrun.data.AnnounceSettings
 import com.example.walkrun.data.ReportSettings
 import com.example.walkrun.data.Sex
 import com.example.walkrun.report.Reports
+import com.example.walkrun.report.GmailSender
+import android.app.Activity
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.walkrun.data.UserProfile
 import com.example.walkrun.tracking.TrackingStatus
 import com.example.walkrun.tracking.TrackingStore
@@ -87,6 +93,20 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var repWeekly by remember { mutableStateOf(true) }
     var repImprove by remember { mutableStateOf(true) }
     var goalKm by remember { mutableStateOf("") }
+    var autoGmail by remember { mutableStateOf(false) }
+    var gmailBusy by remember { mutableStateOf(false) }
+    // The Google approval window for the gmail.send scope.
+    val approval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        gmailBusy = false
+        val auth = GmailSender.fromApprovalResult(context, res.data)
+        if (res.resultCode == Activity.RESULT_OK && auth is GmailSender.Auth.Token) {
+            autoGmail = true
+            scope.launch { app.settings.setAutoGmail(true) }
+            Toast.makeText(context, "השליחה האוטומטית הופעלה.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "האישור בוטל. הדוחות ייפתחו כטיוטה ב-Gmail.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
         val p = app.settings.profile.first()
@@ -105,6 +125,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         repWeekly = r.weekly
         repImprove = r.onImprovement
         goalKm = if (r.weeklyGoalKm > 0) r.weeklyGoalKm.toString() else "0"
+        autoGmail = r.autoGmail
         loaded = true
     }
 
@@ -182,6 +203,50 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 Checkbox(checked = repImprove, onCheckedChange = { repImprove = it })
                 Text("דוח במייל כשיש שיפור או שיא אישי")
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("שליחה אוטומטית דרך Gmail")
+                    Text(
+                        if (autoGmail) "הדוחות נשלחים ישירות לכתובת שלך."
+                        else "כבוי: הדוח נפתח כטיוטה ב-Gmail ושולחים ידנית.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = autoGmail,
+                    enabled = !gmailBusy,
+                    onCheckedChange = { on ->
+                        if (!on) {
+                            autoGmail = false
+                            scope.launch { app.settings.setAutoGmail(false) }
+                            return@Switch
+                        }
+                        val email = account?.email?.takeIf { it != Account.GUEST.email && it.contains('@') }
+                        if (email == null) {
+                            Toast.makeText(context, "יש להתחבר עם Google קודם.", Toast.LENGTH_LONG).show()
+                            return@Switch
+                        }
+                        gmailBusy = true
+                        scope.launch {
+                            try {
+                                when (val auth = GmailSender.authorize(context, email)) {
+                                    is GmailSender.Auth.Token -> {
+                                        gmailBusy = false
+                                        autoGmail = true
+                                        app.settings.setAutoGmail(true)
+                                    }
+                                    is GmailSender.Auth.NeedsApproval ->
+                                        approval.launch(IntentSenderRequest.Builder(auth.intent).build())
+                                }
+                            } catch (e: Exception) {
+                                gmailBusy = false
+                                Log.w("GmailSender", "Authorize failed", e)
+                                Toast.makeText(context, "ההרשאה נכשלה: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                )
+            }
             OutlinedButton(
                 onClick = { scope.launch { Reports.openWeeklyEmail(context, app) } },
                 modifier = Modifier.fillMaxWidth()
@@ -223,7 +288,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                             timeMin = t?.takeIf { it in 1..120 } ?: defaults.timeMin
                         )
                     )
-                    app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove, g!!))
+                    app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove, g!!, autoGmail))
                     Toast.makeText(context, "ההגדרות נשמרו.", Toast.LENGTH_SHORT).show()
                     onBack()
                 }
@@ -274,6 +339,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 onClick = {
                     scope.launch {
                         runCatching { GoogleAuth.signOut(context) }
+                        app.settings.setAutoGmail(false)
                         app.settings.saveAccount(null)
                         onSignedOut()
                     }

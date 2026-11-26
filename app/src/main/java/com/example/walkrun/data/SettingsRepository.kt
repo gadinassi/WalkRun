@@ -49,7 +49,9 @@ data class ReportSettings(
     val weekly: Boolean = true,
     val onImprovement: Boolean = true,
     /** Weekly distance goal, Sunday to Saturday. 0 = no goal. */
-    val weeklyGoalKm: Double = 0.0
+    val weeklyGoalKm: Double = 0.0,
+    /** Send the reports automatically with the Gmail API, instead of opening a draft. */
+    val autoGmail: Boolean = false
 )
 
 data class Account(val name: String, val email: String) {
@@ -79,6 +81,7 @@ class SettingsRepository(private val context: Context) {
         val REPORT_WEEKLY = booleanPreferencesKey("report_weekly")
         val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
         val WEEKLY_GOAL_KM = doublePreferencesKey("weekly_goal_km")
+        val AUTO_GMAIL = booleanPreferencesKey("report_auto_gmail")
         val NAME = stringPreferencesKey("account_name")
         val EMAIL = stringPreferencesKey("account_email")
     }
@@ -118,7 +121,8 @@ class SettingsRepository(private val context: Context) {
             minSaveKm = p[Keys.MIN_SAVE_KM] ?: rd.minSaveKm,
             weekly = p[Keys.REPORT_WEEKLY] ?: rd.weekly,
             onImprovement = p[Keys.REPORT_IMPROVE] ?: rd.onImprovement,
-            weeklyGoalKm = p[Keys.WEEKLY_GOAL_KM] ?: rd.weeklyGoalKm
+            weeklyGoalKm = p[Keys.WEEKLY_GOAL_KM] ?: rd.weeklyGoalKm,
+            autoGmail = p[Keys.AUTO_GMAIL] ?: rd.autoGmail
         )
     }
 
@@ -128,7 +132,12 @@ class SettingsRepository(private val context: Context) {
             it[Keys.REPORT_WEEKLY] = settings.weekly
             it[Keys.REPORT_IMPROVE] = settings.onImprovement
             it[Keys.WEEKLY_GOAL_KM] = settings.weeklyGoalKm
+            it[Keys.AUTO_GMAIL] = settings.autoGmail
         }
+    }
+
+    suspend fun setAutoGmail(on: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_GMAIL] = on }
     }
 
     val account: Flow<Account?> = context.dataStore.data.map { p ->

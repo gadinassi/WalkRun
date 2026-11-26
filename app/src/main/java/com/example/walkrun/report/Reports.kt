@@ -208,29 +208,86 @@ object Reports {
 
     // ---------------- Delivery ----------------
 
-    /** From the settings screen: opens the email app now. */
+    /** From the settings screen: sends now (automatic mode), or opens the email app. */
     suspend fun openWeeklyEmail(context: Context, app: WalkRunApp) {
         val email = weekly(context, app)
         if (email == null) {
             Toast.makeText(context, "אין אימונים בשבועיים האחרונים.", Toast.LENGTH_LONG).show()
             return
         }
-        context.startActivity(emailIntent(context, app, email))
+        when (val r = autoSend(context, app, email)) {
+            SendResult.Sent -> Toast.makeText(context, "הדוח נשלח ל-${recipient(app)}.", Toast.LENGTH_LONG).show()
+            SendResult.Off -> context.startActivity(emailIntent(context, app, email))
+            is SendResult.Failed -> {
+                Toast.makeText(context, "השליחה האוטומטית נכשלה: ${r.reason}", Toast.LENGTH_LONG).show()
+                context.startActivity(emailIntent(context, app, email))
+            }
+        }
     }
 
-    /** From the weekly alarm: a notification. A tap opens the email. */
+    /** From the weekly alarm. */
     suspend fun notifyWeekly(context: Context, app: WalkRunApp) {
         val email = weekly(context, app) ?: return
-        notify(context, NOTIFY_WEEKLY, "הסטטיסטיקה השבועית מוכנה", "לחץ כדי לשלוח אותה למייל.", emailIntent(context, app, email))
+        deliver(context, app, email, NOTIFY_WEEKLY, "הסטטיסטיקה השבועית")
     }
+
+    /** Automatic send when it is on and works; else a notification that opens the draft. */
+    private suspend fun deliver(context: Context, app: WalkRunApp, email: Email, id: Int, what: String) {
+        when (val r = autoSend(context, app, email)) {
+            SendResult.Sent -> notify(
+                context, id, "$what – נשלח למייל", "הדוח והגרפים נשלחו ל-${recipient(app)}.",
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            SendResult.Off -> notify(context, id, "$what – הדוח מוכן", "לחץ כדי לשלוח אותו למייל.", emailIntent(context, app, email))
+            is SendResult.Failed -> notify(
+                context, id, "$what – השליחה האוטומטית נכשלה",
+                "${r.reason} לחץ כדי לשלוח ידנית.", emailIntent(context, app, email)
+            )
+        }
+    }
+
+    sealed interface SendResult {
+        data object Sent : SendResult
+        data object Off : SendResult
+        data class Failed(val reason: String) : SendResult
+    }
+
+    private suspend fun autoSend(context: Context, app: WalkRunApp, email: Email): SendResult {
+        if (!app.settings.reports.first().autoGmail) return SendResult.Off
+        val to = recipient(app) ?: return SendResult.Failed("אין חשבון Google מחובר.")
+        return try {
+            when (val auth = GmailSender.authorize(context, to)) {
+                is GmailSender.Auth.Token -> {
+                    GmailSender.send(auth.value, to, email)
+                    SendResult.Sent
+                }
+                // A background job cannot show the Google window.
+                is GmailSender.Auth.NeedsApproval -> SendResult.Failed("יש לאשר מחדש את השליחה בהגדרות.")
+            }
+        } catch (e: GmailSender.GmailException) {
+            android.util.Log.w("Reports", "Gmail send failed", e)
+            SendResult.Failed(
+                when (e.code) {
+                    401, 403 -> "אין הרשאה (${e.code}). בדוק ש-Gmail API מופעל בפרויקט."
+                    else -> "שגיאה ${e.code}."
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("Reports", "Gmail send failed", e)
+            SendResult.Failed("אין חיבור או שגיאת הרשאה.")
+        }
+    }
+
+    private suspend fun recipient(app: WalkRunApp): String? =
+        app.settings.account.first()?.email?.takeIf { it != Account.GUEST.email && it.contains('@') }
 
     suspend fun notifyImprovement(context: Context, app: WalkRunApp, w: WorkoutEntity) {
         val email = improvement(context, app, w)
-        notify(context, NOTIFY_IMPROVED, if (w.records.isNotEmpty()) "🏆 שיא אישי חדש!" else "כל הכבוד, שיפור!","לחץ כדי לשלוח את הדוח והגרף למייל.", emailIntent(context, app, email))
+        deliver(context, app, email, NOTIFY_IMPROVED, if (w.records.isNotEmpty()) "🏆 שיא אישי חדש" else "כל הכבוד, שיפור")
     }
 
     private suspend fun emailIntent(context: Context, app: WalkRunApp, email: Email): Intent {
-        val to = app.settings.account.first()?.email?.takeIf { it != Account.GUEST.email && it.contains('@') }
+        val to = recipient(app)
         val uris = ArrayList<Uri>(email.images.map {
             FileProvider.getUriForFile(context, "${context.packageName}.files", it)
         })
