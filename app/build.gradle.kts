@@ -71,4 +71,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     // Health Connect: workouts, distance, steps and calories also appear in Google Fit and other apps.
     implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
+    // Wear OS watch app: live data to the watch, pause/resume/stop from the watch.
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
 }

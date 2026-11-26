@@ -342,7 +342,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         if (distanceM < reports.minSaveKm * 1000.0) {
             // Too short (for example, stopped right after start): not saved in the history.
             status = TrackingStatus.IDLE
-            TrackingStore.update(TrackingSnapshot(discardedMinKm = reports.minSaveKm))
+            TrackingStore.update(TrackingSnapshot(discardedMinKm = reports.minSaveKm)); WearBridge.push(this, TrackingStore.state.value)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             voice.speak("האימון קצר מ-${Format.distanceSpeech(reports.minSaveKm * 1000.0)} ולא נשמר.")
             stopJob = lifecycleScope.launch {
@@ -373,7 +373,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val saved = app.workouts.getWorkout(id)
 
         status = TrackingStatus.IDLE
-        TrackingStore.update(TrackingSnapshot(lastSavedWorkoutId = id))
+        TrackingStore.update(TrackingSnapshot(lastSavedWorkoutId = id)); WearBridge.push(this, TrackingStore.state.value)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         val records = saved?.records.orEmpty()
         val recordText = if (records.isEmpty()) "" else
@@ -403,7 +403,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private fun abortWithoutSaving() {
         status = TrackingStatus.IDLE
         stopSensorsAndLocation()
-        TrackingStore.update(TrackingSnapshot())
+        TrackingStore.update(TrackingSnapshot()); WearBridge.push(this, TrackingStore.state.value)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -769,7 +769,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         type = autoType()
         val elapsed = elapsedMs()
         val (steps, estimated) = stepsInfo()
-        TrackingStore.update(
+        val snapshot =
             TrackingSnapshot(
                 status = status,
                 type = type,
@@ -786,7 +786,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 autoPaused = autoPaused,
                 intervalLabel = intervalLabel()
             )
-        )
+        TrackingStore.update(snapshot)
+        WearBridge.push(this, snapshot)
     }
 
     /**

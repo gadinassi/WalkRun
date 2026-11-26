@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "WalkRun"
 include(":app")
+include(":wear")
