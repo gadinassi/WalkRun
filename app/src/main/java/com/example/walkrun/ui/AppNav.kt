@@ -24,6 +24,7 @@ import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.example.walkrun.report.WeeklyReportReceiver
 import java.util.Locale
+import com.example.walkrun.data.DisplaySettings
 
 @Composable
 fun AppNav(app: WalkRunApp) {
@@ -83,7 +84,8 @@ fun AppNav(app: WalkRunApp) {
             RecordsScreen(app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") })
         }
         composable("record") {
-            RecordScreen(onBack = { nav.popBackStack() })
+            val display by app.settings.display.collectAsStateWithLifecycle(initialValue = DisplaySettings())
+            RecordScreen(keepScreenOn = display.keepScreenOn, onBack = { nav.popBackStack() })
         }
         composable(
             "summary/{id}",

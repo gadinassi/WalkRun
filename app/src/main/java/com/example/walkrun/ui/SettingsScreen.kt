@@ -40,6 +40,8 @@ import com.example.walkrun.auth.SignInCancelledException
 import com.example.walkrun.data.Account
 import com.example.walkrun.data.AnnounceSettings
 import com.example.walkrun.data.ReportSettings
+import com.example.walkrun.data.DisplaySettings
+import com.example.walkrun.data.ThemeMode
 import com.example.walkrun.data.Sex
 import com.example.walkrun.report.Reports
 import com.example.walkrun.report.GmailSender
@@ -75,6 +77,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     val scope = rememberCoroutineScope()
     val tracking by TrackingStore.state.collectAsStateWithLifecycle()
     val account by app.settings.account.collectAsStateWithLifecycle(initialValue = null)
+    val display by app.settings.display.collectAsStateWithLifecycle(initialValue = DisplaySettings())
     var signingIn by remember { mutableStateOf(false) }
     var signInError by remember { mutableStateOf<String?>(null) }
 
@@ -165,6 +168,28 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 Spacer(Modifier.width(24.dp))
                 RadioButton(selected = sex == Sex.FEMALE, onClick = { sex = Sex.FEMALE })
                 Text("נקבה")
+            }
+
+            HorizontalDivider()
+
+            // Display: applied at once, without the Save button.
+            Text("תצוגה", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeMode.entries.forEach { m ->
+                    RadioButton(
+                        selected = display.theme == m,
+                        onClick = { scope.launch { app.settings.saveDisplay(display.copy(theme = m)) } }
+                    )
+                    Text(m.label)
+                    Spacer(Modifier.width(8.dp))
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = display.keepScreenOn,
+                    onCheckedChange = { on -> scope.launch { app.settings.saveDisplay(display.copy(keepScreenOn = on)) } }
+                )
+                Text("מסך דלוק בזמן אימון")
             }
 
             HorizontalDivider()

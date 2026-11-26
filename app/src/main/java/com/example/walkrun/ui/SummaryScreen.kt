@@ -158,7 +158,7 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             if (w.records.isNotEmpty()) {
                 Card(
                     Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3C4))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3C4), contentColor = Color(0xFF3A2E00))
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("🏆 שיא אישי חדש", fontWeight = FontWeight.Bold)

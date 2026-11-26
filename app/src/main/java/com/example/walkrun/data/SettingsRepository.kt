@@ -54,6 +54,15 @@ data class ReportSettings(
     val autoGmail: Boolean = false
 )
 
+enum class ThemeMode(val label: String) { SYSTEM("לפי המכשיר"), LIGHT("בהיר"), DARK("כהה") }
+
+/** Display settings. They apply at once, without the Save button. */
+data class DisplaySettings(
+    val theme: ThemeMode = ThemeMode.SYSTEM,
+    /** Keep the screen on while the workout screen is open. */
+    val keepScreenOn: Boolean = true
+)
+
 data class Account(val name: String, val email: String) {
     companion object {
         /** Local user without a Google account. */
@@ -82,6 +91,8 @@ class SettingsRepository(private val context: Context) {
         val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
         val WEEKLY_GOAL_KM = doublePreferencesKey("weekly_goal_km")
         val AUTO_GMAIL = booleanPreferencesKey("report_auto_gmail")
+        val THEME = stringPreferencesKey("theme_mode")
+        val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val NAME = stringPreferencesKey("account_name")
         val EMAIL = stringPreferencesKey("account_email")
     }
@@ -133,6 +144,20 @@ class SettingsRepository(private val context: Context) {
             it[Keys.REPORT_IMPROVE] = settings.onImprovement
             it[Keys.WEEKLY_GOAL_KM] = settings.weeklyGoalKm
             it[Keys.AUTO_GMAIL] = settings.autoGmail
+        }
+    }
+
+    val display: Flow<DisplaySettings> = context.dataStore.data.map { p ->
+        DisplaySettings(
+            theme = ThemeMode.entries.firstOrNull { it.name == p[Keys.THEME] } ?: ThemeMode.SYSTEM,
+            keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: true
+        )
+    }
+
+    suspend fun saveDisplay(settings: DisplaySettings) {
+        context.dataStore.edit {
+            it[Keys.THEME] = settings.theme.name
+            it[Keys.KEEP_SCREEN_ON] = settings.keepScreenOn
         }
     }
 

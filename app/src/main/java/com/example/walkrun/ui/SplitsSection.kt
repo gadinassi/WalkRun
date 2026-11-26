@@ -171,9 +171,12 @@ private fun PaceChart(rows: List<SplitRow>, unit: SplitUnit) {
     val range = max(slowest - fastest, 30.0)
     val top = fastest - range * 0.1
     val bottom = slowest + range * 0.1
+    // Theme colors: dark blue on the light theme, light blue on the dark theme.
+    val lineColor = MaterialTheme.colorScheme.primary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        LegendDot(DarkBlue); Text("פעילות זו", style = MaterialTheme.typography.bodySmall)
+        LegendDot(lineColor); Text("פעילות זו", style = MaterialTheme.typography.bodySmall)
         LegendDot(BaselineGray); Text("ממוצע התקופה", style = MaterialTheme.typography.bodySmall)
     }
     Box(Modifier.fillMaxWidth()) {
@@ -186,7 +189,7 @@ private fun PaceChart(rows: List<SplitRow>, unit: SplitUnit) {
             // Horizontal grid lines
             for (k in 0..3) {
                 val gy = h * k / 3
-                drawLine(Color(0x22000000), Offset(0f, gy), Offset(w, gy), strokeWidth = 1f)
+                drawLine(gridColor, Offset(0f, gy), Offset(w, gy), strokeWidth = 1f)
             }
             // History average: dashed gray line through the splits that have a value.
             val base = Path()
@@ -204,8 +207,8 @@ private fun PaceChart(rows: List<SplitRow>, unit: SplitUnit) {
             // This workout
             val cur = Path()
             rows.forEachIndexed { i, r -> if (i == 0) cur.moveTo(x(i), y(r.pace)) else cur.lineTo(x(i), y(r.pace)) }
-            drawPath(cur, DarkBlue, style = Stroke(width = 6f))
-            rows.forEachIndexed { i, r -> drawCircle(DarkBlue, 8f, Offset(x(i), y(r.pace))) }
+            drawPath(cur, lineColor, style = Stroke(width = 6f))
+            rows.forEachIndexed { i, r -> drawCircle(lineColor, 8f, Offset(x(i), y(r.pace))) }
         }
         // Axis labels: fastest at the top, slowest at the bottom (absolute left, also in RTL).
         Text(
@@ -254,9 +257,10 @@ private fun ChangeBars(rows: List<SplitRow>, unit: SplitUnit) {
             Text(splitLabel(r, unit), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(78.dp))
             Text(Format.pace(r.pace), style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(44.dp))
             val pct = r.changePct
+            val axis = MaterialTheme.colorScheme.outline
             Canvas(Modifier.weight(1f).height(18.dp).padding(horizontal = 6.dp)) {
                 val mid = size.width / 2
-                drawLine(Color(0x55000000), Offset(mid, 0f), Offset(mid, size.height), strokeWidth = 2f)
+                drawLine(axis, Offset(mid, 0f), Offset(mid, size.height), strokeWidth = 2f)
                 if (pct != null && abs(pct) >= 0.5) {
                     val len = (abs(pct).coerceAtMost(maxAbs) / maxAbs * mid).toFloat()
                     // Faster grows to the right, slower to the left (absolute, also in RTL).

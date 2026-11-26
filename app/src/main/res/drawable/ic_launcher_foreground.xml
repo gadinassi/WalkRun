@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: a play mark (start a workout) with speed lines. 108x108, content inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Play triangle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M48,37 L48,71 L76,54 Z" />
+    <!-- Speed lines -->
+    <path
+        android:strokeColor="#7CD992"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M30,44 L40,44 M25,54 L40,54 M30,64 L40,64" />
+</vector>

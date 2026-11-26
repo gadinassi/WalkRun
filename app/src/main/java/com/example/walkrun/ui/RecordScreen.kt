@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,10 +32,18 @@ import com.example.walkrun.util.Format
 import kotlin.math.roundToInt
 
 @Composable
-fun RecordScreen(onBack: () -> Unit) {
+fun RecordScreen(keepScreenOn: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val s by TrackingStore.state.collectAsStateWithLifecycle()
     var confirmStop by remember { mutableStateOf(false) }
+
+    // Screen stays on during the workout, so the numbers can be seen without unlocking.
+    val view = LocalView.current
+    val active = s.status == TrackingStatus.RECORDING || s.status == TrackingStatus.PAUSED
+    DisposableEffect(keepScreenOn, active) {
+        view.keepScreenOn = keepScreenOn && active
+        onDispose { view.keepScreenOn = false }
+    }
 
     val statusText = when (s.status) {
         TrackingStatus.RECORDING -> "מקליט"

@@ -1,0 +1,6 @@
+<resources>
+    <!-- Dark window background before the first frame, so the app does not flash white. -->
+    <style name="Theme.WalkRun" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0E1420</item>
+    </style>
+</resources>

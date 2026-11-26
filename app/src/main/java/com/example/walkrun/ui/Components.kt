@@ -46,6 +46,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.TilesOverlay
 
 // ---------------- Statistics grid ----------------
 
@@ -113,10 +114,16 @@ fun OsmMap(
     segments: List<List<LatLon>>,
     reference: List<LatLon>,
     followLast: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Heat map: route pieces with their own color. When set, it is drawn instead of [segments]. */
+    colored: List<Pair<List<LatLon>, Int>>? = null
 ) {
     val context = LocalContext.current
+    val dark = LocalDarkTheme.current
+    val routeColor = MaterialTheme.colorScheme.primary.toArgb()
     val route = remember { RouteOverlays() }
+    route.lineColor = routeColor
+    val heatLines = remember { mutableListOf<Polyline>() }
     val mapView = remember {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
@@ -142,8 +149,16 @@ fun OsmMap(
 
     // MapView draws tiles outside its own bounds. Clip it, so it does not cover the views around it.
     AndroidView(factory = { mapView }, modifier = modifier.clipToBounds(), update = { map ->
+        // Dark theme: inverted (dark) map tiles.
+        map.overlayManager.tilesOverlay.setColorFilter(if (dark) TilesOverlay.INVERT_COLORS else null)
+        // Heat map mode: replace the plain line with the colored pieces, one time per change.
+        heatLines.forEach { map.overlays.remove(it) }
+        heatLines.clear()
+        colored?.forEach { (pts, color) ->
+            if (pts.size > 1) heatLines += polyline(pts, color, 12f).also { map.overlays.add(it) }
+        }
         // Only new points are added. The lines are not rebuilt on each update.
-        val changed = route.sync(map, segments, reference)
+        val changed = route.sync(map, if (colored != null) emptyList() else segments, reference)
 
         if (followLast) {
             if (changed && !route.userMovedRecently()) {
@@ -175,6 +190,7 @@ private fun polyline(points: List<LatLon>, color: Int, width: Float) = Polyline(
 /** Keeps the map lines and adds only the new points on each update. */
 private class RouteOverlays {
     var lastTouchRealtime = 0L
+    var lineColor = DarkBlue.toArgb()
     private var refLine: Polyline? = null
     private var refSize = -1
     private val lines = mutableListOf<Polyline>()
@@ -204,7 +220,7 @@ private class RouteOverlays {
         }
         segments.forEachIndexed { i, seg ->
             if (i == lines.size) {
-                lines += polyline(emptyList(), DarkBlue.toArgb(), 12f).also { map.overlays.add(it) }
+                lines += polyline(emptyList(), lineColor, 12f).also { map.overlays.add(it) }
                 counts += 0
             }
             if (seg.size > counts[i]) {
