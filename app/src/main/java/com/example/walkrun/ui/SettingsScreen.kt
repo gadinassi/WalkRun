@@ -47,6 +47,10 @@ import com.example.walkrun.data.Sex
 import com.example.walkrun.report.Reports
 import com.example.walkrun.report.GmailSender
 import com.example.walkrun.report.HealthSync
+import com.example.walkrun.report.DriveBackup
+import com.example.walkrun.report.GoogleAccess
+import com.example.walkrun.util.Format
+import androidx.compose.material3.AlertDialog
 import androidx.health.connect.client.PermissionController
 import android.app.Activity
 import android.util.Log
@@ -109,6 +113,58 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var repeats by remember { mutableStateOf("") }
     var autoGmail by remember { mutableStateOf(false) }
     val healthOn by app.settings.healthConnect.collectAsStateWithLifecycle(initialValue = false)
+    val driveOn by app.settings.driveBackup.collectAsStateWithLifecycle(initialValue = false)
+    val lastBackup by app.settings.lastBackup.collectAsStateWithLifecycle(initialValue = 0L)
+    var driveBusy by remember { mutableStateOf<String?>(null) }
+    var restoreInfo by remember { mutableStateOf<DriveBackup.Info?>(null) }
+    // What to do after the Drive approval window: back up now (true) or only turn the switch on.
+    var afterDriveApproval by remember { mutableStateOf<(suspend (String) -> Unit)?>(null) }
+    val driveApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        val auth = GoogleAccess.fromApprovalResult(context, res.data)
+        val next = afterDriveApproval
+        afterDriveApproval = null
+        if (res.resultCode == Activity.RESULT_OK && auth is GoogleAccess.Auth.Token && next != null) {
+            scope.launch { next(auth.value) }
+        } else {
+            driveBusy = null
+            Toast.makeText(context, "האישור ל-Google Drive בוטל.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Gets a Drive token (approval window if needed), then runs [action]. */
+    fun withDrive(busyText: String, action: suspend (String) -> Unit) {
+        val email = account?.email?.takeIf { it != Account.GUEST.email && it.contains('@') }
+        if (email == null) {
+            Toast.makeText(context, "יש להתחבר עם Google קודם.", Toast.LENGTH_LONG).show()
+            return
+        }
+        driveBusy = busyText
+        val wrapped: suspend (String) -> Unit = { token ->
+            try {
+                action(token)
+            } catch (e: Exception) {
+                Log.w("DriveBackup", "Drive action failed", e)
+                Toast.makeText(context, "הפעולה נכשלה: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
+            } finally {
+                driveBusy = null
+            }
+        }
+        scope.launch {
+            try {
+                when (val auth = GoogleAccess.authorize(context, email, DriveBackup.SCOPE)) {
+                    is GoogleAccess.Auth.Token -> wrapped(auth.value)
+                    is GoogleAccess.Auth.NeedsApproval -> {
+                        afterDriveApproval = wrapped
+                        driveApproval.launch(IntentSenderRequest.Builder(auth.intent).build())
+                    }
+                }
+            } catch (e: Exception) {
+                driveBusy = null
+                Log.w("DriveBackup", "Authorize failed", e)
+                Toast.makeText(context, "ההרשאה נכשלה: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     // Health Connect permission screen. After approval, all saved workouts are written once.
     val healthPermission = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
@@ -127,8 +183,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     // The Google approval window for the gmail.send scope.
     val approval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
         gmailBusy = false
-        val auth = GmailSender.fromApprovalResult(context, res.data)
-        if (res.resultCode == Activity.RESULT_OK && auth is GmailSender.Auth.Token) {
+        val auth = GoogleAccess.fromApprovalResult(context, res.data)
+        if (res.resultCode == Activity.RESULT_OK && auth is GoogleAccess.Auth.Token) {
             autoGmail = true
             scope.launch { app.settings.setAutoGmail(true) }
             Toast.makeText(context, "השליחה האוטומטית הופעלה.", Toast.LENGTH_SHORT).show()
@@ -321,12 +377,12 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                         scope.launch {
                             try {
                                 when (val auth = GmailSender.authorize(context, email)) {
-                                    is GmailSender.Auth.Token -> {
+                                    is GoogleAccess.Auth.Token -> {
                                         gmailBusy = false
                                         autoGmail = true
                                         app.settings.setAutoGmail(true)
                                     }
-                                    is GmailSender.Auth.NeedsApproval ->
+                                    is GoogleAccess.Auth.NeedsApproval ->
                                         approval.launch(IntentSenderRequest.Builder(auth.intent).build())
                                 }
                             } catch (e: Exception) {
@@ -359,6 +415,61 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     }
                 )
             }
+            HorizontalDivider()
+
+            Text("גיבוי ל-Google Drive", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("גיבוי אוטומטי כל לילה")
+                    Text(
+                        if (lastBackup > 0) "גיבוי אחרון: ${Format.date(lastBackup)}" else "עדיין אין גיבוי.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = driveOn,
+                    enabled = driveBusy == null,
+                    onCheckedChange = { on ->
+                        if (!on) scope.launch { app.settings.setDriveBackup(false) }
+                        else withDrive("מגבה...") { token ->
+                            DriveBackup.backup(app, token)
+                            app.settings.setDriveBackup(true)
+                            Toast.makeText(context, "הגיבוי הופעל ונשמר גיבוי ראשון.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    enabled = driveBusy == null,
+                    onClick = {
+                        withDrive("מגבה...") { token ->
+                            DriveBackup.backup(app, token)
+                            Toast.makeText(context, "הגיבוי נשמר ב-Google Drive.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("גיבוי עכשיו") }
+                OutlinedButton(
+                    enabled = driveBusy == null && tracking.status == TrackingStatus.IDLE,
+                    onClick = {
+                        withDrive("בודק גיבוי...") { token ->
+                            val info = DriveBackup.info(token)
+                            if (info == null) Toast.makeText(context, "אין גיבוי ב-Google Drive.", Toast.LENGTH_LONG).show()
+                            else restoreInfo = info
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("שחזור") }
+            }
+            driveBusy?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text(
+                "הגיבוי נשמר בתיקייה מוסתרת של האפליקציה ב-Drive. WalkRun לא רואה קבצים אחרים שלך.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            HorizontalDivider()
+
             OutlinedButton(
                 onClick = { scope.launch { Reports.openWeeklyEmail(context, app) } },
                 modifier = Modifier.fillMaxWidth()
@@ -487,6 +598,26 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 Text("יש לסיים את האימון הפעיל לפני התנתקות.", style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+
+    restoreInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { restoreInfo = null },
+            title = { Text("לשחזר מהגיבוי?") },
+            text = {
+                Text(
+                    "הגיבוי מ-${info.modifiedTime.take(16).replace('T', ' ')} (UTC) יחליף את כל האימונים וההגדרות " +
+                        "שבטלפון עכשיו. אימונים שנשמרו אחרי הגיבוי יימחקו. האפליקציה תיפתח מחדש."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreInfo = null
+                    withDrive("משחזר...") { token -> DriveBackup.restore(app, token) }
+                }) { Text("שחזור") }
+            },
+            dismissButton = { TextButton(onClick = { restoreInfo = null }) { Text("ביטול") } }
+        )
     }
 
     if (pickBirth) {

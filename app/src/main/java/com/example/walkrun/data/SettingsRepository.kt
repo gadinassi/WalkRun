@@ -110,6 +110,8 @@ class SettingsRepository(private val context: Context) {
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause")
         val HEALTH_CONNECT = booleanPreferencesKey("health_connect")
+        val DRIVE_BACKUP = booleanPreferencesKey("drive_backup")
+        val LAST_BACKUP = longPreferencesKey("last_backup_ms")
         val PACE_ALERT = booleanPreferencesKey("pace_alert")
         val SLOW_PACE = intPreferencesKey("pace_alert_slow_sec")
         val FAST_PACE = intPreferencesKey("pace_alert_fast_sec")
@@ -211,6 +213,18 @@ class SettingsRepository(private val context: Context) {
             it[Keys.THEME] = settings.theme.name
             it[Keys.KEEP_SCREEN_ON] = settings.keepScreenOn
         }
+    }
+
+    /** Nightly backup to Google Drive, and the time of the last successful backup (0 = never). */
+    val driveBackup: Flow<Boolean> = context.dataStore.data.map { it[Keys.DRIVE_BACKUP] ?: false }
+    val lastBackup: Flow<Long> = context.dataStore.data.map { it[Keys.LAST_BACKUP] ?: 0L }
+
+    suspend fun setDriveBackup(on: Boolean) {
+        context.dataStore.edit { it[Keys.DRIVE_BACKUP] = on }
+    }
+
+    suspend fun setLastBackup(ms: Long) {
+        context.dataStore.edit { it[Keys.LAST_BACKUP] = ms }
     }
 
     /** Write each saved workout to Health Connect. */

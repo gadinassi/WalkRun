@@ -257,14 +257,14 @@ object Reports {
         val to = recipient(app) ?: return SendResult.Failed("אין חשבון Google מחובר.")
         return try {
             when (val auth = GmailSender.authorize(context, to)) {
-                is GmailSender.Auth.Token -> {
+                is GoogleAccess.Auth.Token -> {
                     GmailSender.send(auth.value, to, email)
                     SendResult.Sent
                 }
                 // A background job cannot show the Google window.
-                is GmailSender.Auth.NeedsApproval -> SendResult.Failed("יש לאשר מחדש את השליחה בהגדרות.")
+                is GoogleAccess.Auth.NeedsApproval -> SendResult.Failed("יש לאשר מחדש את השליחה בהגדרות.")
             }
-        } catch (e: GmailSender.GmailException) {
+        } catch (e: GoogleAccess.HttpException) {
             android.util.Log.w("Reports", "Gmail send failed", e)
             SendResult.Failed(
                 when (e.code) {
