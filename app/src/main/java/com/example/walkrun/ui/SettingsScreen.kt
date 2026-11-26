@@ -46,6 +46,19 @@ import com.example.walkrun.tracking.TrackingStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.rememberDatePickerState
+import java.time.LocalDate
+import java.time.Period
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +73,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var loaded by remember { mutableStateOf(false) }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("") }
+    var birth by remember { mutableStateOf(LocalDate.now()) }
+    var pickBirth by remember { mutableStateOf(false) }
     var sex by remember { mutableStateOf(Sex.MALE) }
     var annEnabled by remember { mutableStateOf(true) }
     var annByDistance by remember { mutableStateOf(true) }
@@ -73,7 +87,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         val a = app.settings.announce.first()
         height = p.heightCm.toString()
         weight = p.weightKg.toString()
-        age = p.age.toString()
+        birth = p.birthDate
         sex = p.sex
         annEnabled = a.enabled
         annByDistance = a.byDistance
@@ -99,7 +113,19 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             Text("פרטים אישיים", style = MaterialTheme.typography.titleMedium)
             NumberField("גובה (ס\"מ)", height) { height = it }
             NumberField("משקל (ק\"ג)", weight, decimal = true) { weight = it }
-            NumberField("גיל", age) { age = it }
+            // Read-only field. A tap opens the calendar.
+            Box(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = birth.format(BIRTH_FORMAT),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("תאריך לידה") },
+                    supportingText = { Text("גיל: ${Period.between(birth, LocalDate.now()).years}") },
+                    trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(Modifier.matchParentSize().clickable { pickBirth = true })
+            }
             Text("מין")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = sex == Sex.MALE, onClick = { sex = Sex.MALE })
@@ -135,14 +161,14 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             Button(onClick = {
                 val h = height.toIntOrNull()
                 val w = weight.toDoubleOrNull()
-                val a = age.toIntOrNull()
+                val a = Period.between(birth, LocalDate.now()).years
                 val d = annDistance.toDoubleOrNull()
                 val t = annTime.toIntOrNull()
                 // A hidden (unchecked) field is not validated. Its last valid value is kept.
                 val error = when {
                     h == null || h !in 100..230 -> "גובה: ערך בין 100 ל-230 ס\"מ."
                     w == null || w !in 30.0..250.0 -> "משקל: ערך בין 30 ל-250 ק\"ג."
-                    a == null || a !in 10..100 -> "גיל: ערך בין 10 ל-100."
+                    a !in 10..100 -> "תאריך לידה: הגיל צריך להיות בין 10 ל-100."
                     annEnabled && !annByDistance && !annByTime -> "הודעות קוליות: בחר מרחק, זמן או שניהם."
                     annByDistance && (d == null || d !in 0.1..50.0) -> "מרחק הודעה: ערך בין 0.1 ל-50 ק\"מ."
                     annByTime && (t == null || t !in 1..120) -> "זמן הודעה: ערך בין 1 ל-120 דקות."
@@ -153,7 +179,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     return@Button
                 }
                 scope.launch {
-                    app.settings.saveProfile(UserProfile(h!!, w!!, a!!, sex))
+                    app.settings.saveProfile(UserProfile(h!!, w!!, birth, sex))
                     val defaults = AnnounceSettings()
                     app.settings.saveAnnounce(
                         AnnounceSettings(
@@ -226,4 +252,32 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             }
         }
     }
+
+    if (pickBirth) {
+        // The date picker works in UTC milliseconds at midnight.
+        val today = LocalDate.now()
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = birth.toEpochDay() * DAY_MS,
+            yearRange = (today.year - 100)..today.year,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= today.toEpochDay() * DAY_MS
+                override fun isSelectableYear(year: Int) = year <= today.year
+            }
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickBirth = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { birth = LocalDate.ofEpochDay(it / DAY_MS) }
+                    pickBirth = false
+                }) { Text("אישור") }
+            },
+            dismissButton = { TextButton(onClick = { pickBirth = false }) { Text("ביטול") } }
+        ) {
+            DatePicker(state = state, title = { Text("תאריך לידה", Modifier.padding(start = 24.dp, top = 16.dp)) })
+        }
+    }
 }
+
+private const val DAY_MS = 86_400_000L
+private val BIRTH_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy")

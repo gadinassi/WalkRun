@@ -5,10 +5,13 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.Period
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
@@ -17,9 +20,16 @@ enum class Sex { MALE, FEMALE }
 data class UserProfile(
     val heightCm: Int = 175,
     val weightKg: Double = 75.0,
-    val age: Int = 40,
+    val birthDate: LocalDate = LocalDate.now().minusYears(DEFAULT_AGE),
     val sex: Sex = Sex.MALE
-)
+) {
+    /** Age in full years today. Goes up by itself on the birthday. */
+    val age: Int get() = Period.between(birthDate, LocalDate.now()).years
+
+    companion object {
+        const val DEFAULT_AGE = 40L
+    }
+}
 
 /** Announcements by distance and by time are independent. Both can be on. */
 data class AnnounceSettings(
@@ -42,7 +52,9 @@ class SettingsRepository(private val context: Context) {
     private object Keys {
         val HEIGHT = intPreferencesKey("height_cm")
         val WEIGHT = doublePreferencesKey("weight_kg")
+        /** Old setting: age in years. Read only, to estimate the birth date after an update. */
         val AGE = intPreferencesKey("age")
+        val BIRTH = longPreferencesKey("birth_epoch_day")
         val SEX = stringPreferencesKey("sex")
         val ANN_ENABLED = booleanPreferencesKey("announce_enabled")
         /** Old setting: "DISTANCE" or "TIME". Read only, to keep the user's choice after an update. */
@@ -62,7 +74,9 @@ class SettingsRepository(private val context: Context) {
         UserProfile(
             heightCm = p[Keys.HEIGHT] ?: d.heightCm,
             weightKg = p[Keys.WEIGHT] ?: d.weightKg,
-            age = p[Keys.AGE] ?: d.age,
+            birthDate = p[Keys.BIRTH]?.let { LocalDate.ofEpochDay(it) }
+                ?: p[Keys.AGE]?.let { LocalDate.now().minusYears(it.toLong()) }
+                ?: d.birthDate,
             sex = Sex.entries.firstOrNull { it.name == p[Keys.SEX] } ?: d.sex
         )
     }
@@ -89,7 +103,8 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit {
             it[Keys.HEIGHT] = profile.heightCm
             it[Keys.WEIGHT] = profile.weightKg
-            it[Keys.AGE] = profile.age
+            it[Keys.BIRTH] = profile.birthDate.toEpochDay()
+            it.remove(Keys.AGE)
             it[Keys.SEX] = profile.sex.name
         }
     }

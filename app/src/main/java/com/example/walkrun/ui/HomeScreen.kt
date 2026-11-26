@@ -77,7 +77,7 @@ fun HomeScreen(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                     ) {
                         Text(
-                            "הזן גובה, משקל, גיל ומין בהגדרות. בלי הנתונים האלה החישוב משתמש בערכי ברירת מחדל.",
+                            "הזן גובה, משקל, תאריך לידה ומין בהגדרות. בלי הנתונים האלה החישוב משתמש בערכי ברירת מחדל.",
                             modifier = Modifier.padding(12.dp)
                         )
                     }
