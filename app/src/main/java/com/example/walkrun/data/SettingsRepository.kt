@@ -50,6 +50,8 @@ data class ReportSettings(
     val onImprovement: Boolean = true,
     /** Weekly distance goal, Sunday to Saturday. 0 = no goal. */
     val weeklyGoalKm: Double = 0.0,
+    /** Monthly distance goal, calendar month. 0 = no goal. */
+    val monthlyGoalKm: Double = 0.0,
     /** Send the reports automatically with the Gmail API, instead of opening a draft. */
     val autoGmail: Boolean = false
 )
@@ -105,6 +107,7 @@ class SettingsRepository(private val context: Context) {
         val REPORT_WEEKLY = booleanPreferencesKey("report_weekly")
         val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
         val WEEKLY_GOAL_KM = doublePreferencesKey("weekly_goal_km")
+        val MONTHLY_GOAL_KM = doublePreferencesKey("monthly_goal_km")
         val AUTO_GMAIL = booleanPreferencesKey("report_auto_gmail")
         val THEME = stringPreferencesKey("theme_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
@@ -159,6 +162,7 @@ class SettingsRepository(private val context: Context) {
             weekly = p[Keys.REPORT_WEEKLY] ?: rd.weekly,
             onImprovement = p[Keys.REPORT_IMPROVE] ?: rd.onImprovement,
             weeklyGoalKm = p[Keys.WEEKLY_GOAL_KM] ?: rd.weeklyGoalKm,
+            monthlyGoalKm = p[Keys.MONTHLY_GOAL_KM] ?: rd.monthlyGoalKm,
             autoGmail = p[Keys.AUTO_GMAIL] ?: rd.autoGmail
         )
     }
@@ -169,6 +173,7 @@ class SettingsRepository(private val context: Context) {
             it[Keys.REPORT_WEEKLY] = settings.weekly
             it[Keys.REPORT_IMPROVE] = settings.onImprovement
             it[Keys.WEEKLY_GOAL_KM] = settings.weeklyGoalKm
+            it[Keys.MONTHLY_GOAL_KM] = settings.monthlyGoalKm
             it[Keys.AUTO_GMAIL] = settings.autoGmail
         }
     }

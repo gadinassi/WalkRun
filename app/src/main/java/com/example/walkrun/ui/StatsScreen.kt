@@ -99,7 +99,7 @@ fun StatsScreen(app: WalkRunApp, onBack: () -> Unit) {
                 }
             }
 
-            MonthlyCard(Analysis.monthly(workouts))
+            MonthlyCard(Analysis.monthly(workouts), reports.monthlyGoalKm)
         }
     }
 }

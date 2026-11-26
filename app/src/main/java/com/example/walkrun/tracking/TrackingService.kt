@@ -150,6 +150,10 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private var goalM = 0.0
     private var weekDoneM = 0.0
     private var goalAnnounced = false
+    /** Monthly goal and the distance of this month's saved workouts, in meters. 0 = no goal. */
+    private var monthGoalM = 0.0
+    private var monthDoneM = 0.0
+    private var monthGoalAnnounced = false
 
     // Training: auto-pause, pace alert, intervals
     private var training = TrainingSettings()
@@ -222,6 +226,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         hasBarometer = false; baroAlt = null; elevation = ElevationGainTracker(4.0)
         ghostState = 0; lastGhostAlert = 0L; lastOffRouteAlert = 0L; lastStatusAnnounce = 0L
         goalM = 0.0; weekDoneM = 0.0; goalAnnounced = false
+        monthGoalM = 0.0; monthDoneM = 0.0; monthGoalAnnounced = false
         autoPaused = false; lastPaceAlert = 0L; intervals = null; intervalPhase = -1; intervalWarned = -1
     }
 
@@ -232,10 +237,16 @@ class TrackingService : LifecycleService(), SensorEventListener {
         intervals = if (training.intervals) {
             Intervals(training.workSec * 1000L, training.restSec * 1000L, training.repeats.coerceAtLeast(1))
         } else null
-        goalM = app.settings.reports.first().weeklyGoalKm * 1000.0
+        val goals = app.settings.reports.first()
+        goalM = goals.weeklyGoalKm * 1000.0
         if (goalM > 0) {
             val (from, to) = Week.currentRange()
             weekDoneM = app.workouts.between(from, to).sumOf { it.distanceM }
+        }
+        monthGoalM = goals.monthlyGoalKm * 1000.0
+        if (monthGoalM > 0) {
+            val (from, to) = Week.monthRange()
+            monthDoneM = app.workouts.between(from, to).sumOf { it.distanceM }
         }
         if (requestedGhostId != null) {
             val ref = app.workouts.getWorkout(requestedGhostId)
@@ -386,7 +397,11 @@ class TrackingService : LifecycleService(), SensorEventListener {
             val left = goalM - weekDoneM - distanceM
             if (left > 0) " ליעד השבועי נותרו ${Format.distanceSpeech(left)}." else ""
         } else ""
-        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$segmentText$goalText")
+        val monthText = if (monthGoalM > 0) {
+            val left = monthGoalM - monthDoneM - distanceM
+            if (left > 0) " ליעד החודשי נותרו ${Format.distanceSpeech(left)}." else ""
+        } else ""
+        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$segmentText$goalText$monthText")
         saved?.let { HealthSync.afterSave(app, it) }
         WalkRunWidget.refresh(this)
         if (saved != null && reports.onImprovement && (saved.trend == Trend.IMPROVED.name || records.isNotEmpty())) {
@@ -640,10 +655,14 @@ class TrackingService : LifecycleService(), SensorEventListener {
 
     /** One announcement when this workout brings the week to the goal. */
     private fun checkWeeklyGoal() {
-        if (goalM <= 0 || goalAnnounced || weekDoneM >= goalM) return
-        if (weekDoneM + distanceM < goalM) return
-        goalAnnounced = true
-        voice.speak("כל הכבוד! הגעת ליעד השבועי של ${Format.kmSpeech(goalM)} קילומטר.")
+        if (goalM > 0 && !goalAnnounced && weekDoneM < goalM && weekDoneM + distanceM >= goalM) {
+            goalAnnounced = true
+            voice.speak("כל הכבוד! הגעת ליעד השבועי של ${Format.kmSpeech(goalM)} קילומטר.")
+        }
+        if (monthGoalM > 0 && !monthGoalAnnounced && monthDoneM < monthGoalM && monthDoneM + distanceM >= monthGoalM) {
+            monthGoalAnnounced = true
+            voice.speak("כל הכבוד! הגעת ליעד החודשי של ${Format.kmSpeech(monthGoalM)} קילומטר.")
+        }
     }
 
     private fun checkTimeAnnouncement() {

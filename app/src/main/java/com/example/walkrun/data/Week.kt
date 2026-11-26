@@ -19,6 +19,15 @@ object Week {
         return ms(start) to ms(start.plusDays(7))
     }
 
+    /** Start (inclusive) and end (exclusive) of the current calendar month, in epoch ms. */
+    fun monthRange(): Pair<Long, Long> {
+        val start = LocalDate.now(zone()).withDayOfMonth(1)
+        return ms(start) to ms(start.plusMonths(1))
+    }
+
+    /** Days left in the current month, today included. */
+    fun monthDaysLeft(): Int = LocalDate.now(zone()).let { it.lengthOfMonth() - it.dayOfMonth + 1 }
+
     /** Days left in the current week, today included. */
     fun daysLeft(): Int = 7 - (LocalDate.now(zone()).dayOfWeek.value % 7)
 }

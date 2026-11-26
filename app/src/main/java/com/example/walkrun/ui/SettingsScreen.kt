@@ -104,6 +104,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var repWeekly by remember { mutableStateOf(true) }
     var repImprove by remember { mutableStateOf(true) }
     var goalKm by remember { mutableStateOf("") }
+    var monthGoalKm by remember { mutableStateOf("") }
     var autoPause by remember { mutableStateOf(true) }
     var paceAlert by remember { mutableStateOf(false) }
     var slowPace by remember { mutableStateOf("") }
@@ -211,6 +212,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         repWeekly = r.weekly
         repImprove = r.onImprovement
         goalKm = if (r.weeklyGoalKm > 0) r.weeklyGoalKm.toString() else "0"
+        monthGoalKm = if (r.monthlyGoalKm > 0) r.monthlyGoalKm.toString() else "0"
         autoGmail = r.autoGmail
         val tr = app.settings.training.first()
         autoPause = tr.autoPause
@@ -342,6 +344,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
 
             Text("יעדים, היסטוריה ודוחות", style = MaterialTheme.typography.titleMedium)
             NumberField("יעד שבועי, ראשון עד שבת (ק\"מ, 0 = ללא יעד)", goalKm, decimal = true, step = 1.0, min = 0.0, max = 500.0) { goalKm = it }
+            NumberField("יעד חודשי (ק\"מ, 0 = ללא יעד)", monthGoalKm, decimal = true, step = 5.0, min = 0.0, max = 2000.0) { monthGoalKm = it }
             NumberField("לא לשמור אימון קצר מ- (ק\"מ)", minSaveKm, decimal = true, step = 0.1, min = 0.0, max = 20.0) { minSaveKm = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = repWeekly, onCheckedChange = { repWeekly = it })
@@ -484,6 +487,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 val t = annTime.toIntOrNull()
                 val m = minSaveKm.toDoubleOrNull()
                 val g = goalKm.ifBlank { "0" }.toDoubleOrNull()
+                val mg = monthGoalKm.ifBlank { "0" }.toDoubleOrNull()
                 val slow = parseMmss(slowPace)
                 val fast = parseMmss(fastPace)
                 val work = parseMmss(workTime)
@@ -499,6 +503,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     annByTime && (t == null || t !in 1..120) -> "זמן הודעה: ערך בין 1 ל-120 דקות."
                     m == null || m !in 0.0..20.0 -> "אימון קצר: ערך בין 0 ל-20 ק\"מ."
                     g == null || g !in 0.0..500.0 -> "יעד שבועי: ערך בין 0 ל-500 ק\"מ."
+                    mg == null || mg !in 0.0..2000.0 -> "יעד חודשי: ערך בין 0 ל-2000 ק\"מ."
                     paceAlert && (slow == null || fast == null || slow !in 120..1800 || fast !in 120..1800) ->
                         "התראת קצב: כתוב קצב בצורה 8:00, בין 2:00 ל-30:00."
                     paceAlert && fast!! >= slow!! -> "התראת קצב: הקצב המהיר צריך להיות קטן מהאיטי."
@@ -536,7 +541,10 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                             repeats = rep?.takeIf { intervalsOn } ?: oldTr.repeats
                         )
                     )
-                    app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove, g!!, autoGmail))
+                    app.settings.saveReports(ReportSettings(
+                        minSaveKm = m!!, weekly = repWeekly, onImprovement = repImprove,
+                        weeklyGoalKm = g!!, monthlyGoalKm = mg!!, autoGmail = autoGmail
+                    ))
                     WalkRunWidget.refresh(context)
                     Toast.makeText(context, "ההגדרות נשמרו.", Toast.LENGTH_SHORT).show()
                     onBack()

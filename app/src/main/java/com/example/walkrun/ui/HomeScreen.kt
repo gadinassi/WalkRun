@@ -137,7 +137,16 @@ fun HomeScreen(
                 }
             }
             if (reports.weeklyGoalKm > 0) {
-                item { GoalCard(workouts, reports.weeklyGoalKm) }
+                item {
+                    val (from, to) = remember(workouts) { Week.currentRange() }
+                    GoalCard("🎯 יעד שבועי", "השבוע", workouts.filter { it.startTime in from until to }, reports.weeklyGoalKm, Week.daysLeft(), "סוף השבוע")
+                }
+            }
+            if (reports.monthlyGoalKm > 0) {
+                item {
+                    val (from, to) = remember(workouts) { Week.monthRange() }
+                    GoalCard("📅 יעד חודשי", "החודש", workouts.filter { it.startTime in from until to }, reports.monthlyGoalKm, Week.monthDaysLeft(), "סוף החודש")
+                }
             }
             item { Text("היסטוריה", style = MaterialTheme.typography.titleMedium) }
             if (workouts.isEmpty()) {
@@ -158,17 +167,23 @@ fun HomeScreen(
     }
 }
 
-/** Progress of this week (Sunday to Saturday) toward the distance goal. */
+/** Progress toward a distance goal. [inPeriod]: the workouts of this week or this month. */
 @Composable
-private fun GoalCard(workouts: List<WorkoutEntity>, goalKm: Double) {
-    val (from, to) = remember(workouts) { Week.currentRange() }
-    val doneKm = workouts.filter { it.startTime in from until to }.sumOf { it.distanceM } / 1000.0
+private fun GoalCard(
+    title: String,
+    periodName: String,
+    inPeriod: List<WorkoutEntity>,
+    goalKm: Double,
+    daysLeft: Int,
+    endName: String
+) {
+    val doneKm = inPeriod.sumOf { it.distanceM } / 1000.0
     val progress = (doneKm / goalKm).toFloat().coerceIn(0f, 1f)
     val reached = doneKm >= goalKm
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🎯 יעד שבועי", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text(
                     String.format(Locale.US, "%.1f / %.1f ק\"מ", doneKm, goalKm),
                     style = MaterialTheme.typography.titleMedium
@@ -182,9 +197,11 @@ private fun GoalCard(workouts: List<WorkoutEntity>, goalKm: Double) {
                 drawStopIndicator = {}
             )
             Text(
-                if (reached) "כל הכבוד! היעד הושג השבוע."
+                if (reached) "כל הכבוד! היעד הושג $periodName."
                 else String.format(Locale.US, "נותרו %.1f ק\"מ · ", goalKm - doneKm) +
-                    Week.daysLeft().let { if (it == 1) "היום האחרון בשבוע" else "$it ימים עד סוף השבוע" },
+                    (if (daysLeft == 1) "היום האחרון" else "$daysLeft ימים עד $endName") +
+                    // The distance per day that is still needed, from today.
+                    String.format(Locale.US, " · %.1f ק\"מ ליום", (goalKm - doneKm) / daysLeft),
                 style = MaterialTheme.typography.bodySmall
             )
         }

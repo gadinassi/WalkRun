@@ -110,6 +110,15 @@ object Reports {
                     else "🎯 יעד שבועי: ${String.format(Locale.US, "%.1f", done)} מתוך ${String.format(Locale.US, "%.1f", goalKm)} ק\"מ ($pct%)"
                 )
             }
+            val monthGoal = app.settings.reports.first().monthlyGoalKm
+            if (monthGoal > 0) {
+                val (mFrom, mTo) = Week.monthRange()
+                val mKm = app.workouts.between(mFrom, mTo).sumOf { it.distanceM } / 1000
+                appendLine(
+                    String.format(Locale.US, "📅 יעד חודשי: %.1f מתוך %.1f ק\"מ (%d%%)%s",
+                        mKm, monthGoal, (mKm / monthGoal * 100).roundToInt(), if (mKm >= monthGoal) " – הושג!" else "")
+                )
+            }
             val weekRecords = thisWeek.flatMap { w -> w.records.map { it to w } }
             if (weekRecords.isNotEmpty()) {
                 appendLine("🏆 שיאים אישיים השבוע: " + weekRecords.joinToString(", ") { (k, w) ->

@@ -93,9 +93,11 @@ fun HeatLegend() {
 
 /** Bars: km per month. Line labels: average pace. Oldest month on the left. */
 @Composable
-fun MonthlyCard(months: List<Analysis.Month>) {
+fun MonthlyCard(months: List<Analysis.Month>, goalKm: Double = 0.0) {
     val barColor = MaterialTheme.colorScheme.primary
-    val maxKm = (months.maxOfOrNull { it.km } ?: 0.0).coerceAtLeast(1.0)
+    val goalColor = StartGreen
+    // The goal line must fit in the chart too.
+    val maxKm = maxOf(months.maxOfOrNull { it.km } ?: 0.0, goalKm).coerceAtLeast(1.0)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("מגמה חודשית – ק\"מ בחודש", fontWeight = FontWeight.Bold)
@@ -103,8 +105,24 @@ fun MonthlyCard(months: List<Analysis.Month>) {
                 val group = size.width / months.size
                 months.forEachIndexed { i, m ->
                     val h = (m.km / maxKm * size.height * 0.92).toFloat()
-                    drawRect(barColor, Offset(group * i + group * 0.18f, size.height - h), Size(group * 0.64f, h))
+                    drawRect(
+                        if (goalKm > 0 && m.km >= goalKm) goalColor else barColor,
+                        Offset(group * i + group * 0.18f, size.height - h), Size(group * 0.64f, h)
+                    )
                 }
+                if (goalKm > 0) {
+                    val gy = (size.height - goalKm / maxKm * size.height * 0.92).toFloat()
+                    drawLine(
+                        goalColor, Offset(0f, gy), Offset(size.width, gy), strokeWidth = 3f,
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 8f))
+                    )
+                }
+            }
+            if (goalKm > 0) {
+                Text(
+                    String.format(Locale.US, "קו ירוק = יעד חודשי %.0f ק\"מ. עמודה ירוקה = היעד הושג.", goalKm),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
             Row(Modifier.fillMaxWidth()) {
                 // Absolute left-to-right order, also in RTL.
