@@ -238,8 +238,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("פרטים אישיים", style = MaterialTheme.typography.titleMedium)
-            NumberField("גובה (ס\"מ)", height) { height = it }
-            NumberField("משקל (ק\"ג)", weight, decimal = true) { weight = it }
+            NumberField("גובה (ס\"מ)", height, min = 100.0, max = 230.0) { height = it }
+            NumberField("משקל (ק\"ג)", weight, decimal = true, step = 0.5, min = 30.0, max = 250.0) { weight = it }
             // Read-only field. A tap opens the calendar.
             Box(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -297,8 +297,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             }
             if (paceAlert) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f)) { TimeField("איטי מ- (דק':שנ')", slowPace) { slowPace = it } }
-                    Box(Modifier.weight(1f)) { TimeField("מהיר מ- (דק':שנ')", fastPace) { fastPace = it } }
+                    Box(Modifier.weight(1f)) { TimeField("איטי מ- (דק':שנ')", slowPace, stepSec = 5, minSec = 120, maxSec = 1800) { slowPace = it } }
+                    Box(Modifier.weight(1f)) { TimeField("מהיר מ- (דק':שנ')", fastPace, stepSec = 5, minSec = 120, maxSec = 1800) { fastPace = it } }
                 }
                 Text("קצב לקילומטר. הודעה כשהקצב יוצא מהטווח, לכל היותר פעם בדקה.", style = MaterialTheme.typography.bodySmall)
             }
@@ -310,7 +310,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.weight(1f)) { TimeField("ריצה (דק':שנ')", workTime) { workTime = it } }
                     Box(Modifier.weight(1f)) { TimeField("הליכה (דק':שנ')", restTime) { restTime = it } }
-                    Box(Modifier.weight(0.7f)) { NumberField("סבבים", repeats) { repeats = it } }
+                    Box(Modifier.weight(0.7f)) { NumberField("סבבים", repeats, min = 1.0, max = 50.0) { repeats = it } }
                 }
                 Text("האינטרוולים פועלים בכל אימון כל עוד האפשרות מסומנת.", style = MaterialTheme.typography.bodySmall)
             }
@@ -328,21 +328,21 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 Text("לפי מרחק")
             }
             if (annByDistance) {
-                NumberField("כל כמה ק\"מ", annDistance, decimal = true) { annDistance = it }
+                NumberField("כל כמה ק\"מ", annDistance, decimal = true, step = 0.5, min = 0.5, max = 50.0) { annDistance = it }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = annByTime, onCheckedChange = { annByTime = it }, enabled = annEnabled)
                 Text("לפי זמן")
             }
             if (annByTime) {
-                NumberField("כל כמה דקות", annTime) { annTime = it }
+                NumberField("כל כמה דקות", annTime, min = 1.0, max = 120.0) { annTime = it }
             }
 
             HorizontalDivider()
 
             Text("יעדים, היסטוריה ודוחות", style = MaterialTheme.typography.titleMedium)
-            NumberField("יעד שבועי, ראשון עד שבת (ק\"מ, 0 = ללא יעד)", goalKm, decimal = true) { goalKm = it }
-            NumberField("לא לשמור אימון קצר מ- (ק\"מ)", minSaveKm, decimal = true) { minSaveKm = it }
+            NumberField("יעד שבועי, ראשון עד שבת (ק\"מ, 0 = ללא יעד)", goalKm, decimal = true, step = 1.0, min = 0.0, max = 500.0) { goalKm = it }
+            NumberField("לא לשמור אימון קצר מ- (ק\"מ)", minSaveKm, decimal = true, step = 0.1, min = 0.0, max = 20.0) { minSaveKm = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = repWeekly, onCheckedChange = { repWeekly = it })
                 Text("דוח שבועי במייל (יום ראשון בבוקר)")
@@ -669,13 +669,27 @@ private fun parseMmss(text: String): Int? {
     }
 }
 
+/** Time as m:ss, with ▲▼ arrows of [stepSec] seconds inside [minSec]..[maxSec]. */
 @Composable
-private fun TimeField(label: String, value: String, onChange: (String) -> Unit) {
+private fun TimeField(
+    label: String,
+    value: String,
+    stepSec: Int = 10,
+    minSec: Int = 10,
+    maxSec: Int = 3600,
+    onChange: (String) -> Unit
+) {
+    fun shift(sign: Int) {
+        val current = parseMmss(value) ?: minSec
+        val snapped = (current + stepSec / 2) / stepSec * stepSec // Snap to the step grid.
+        onChange(mmss((snapped + sign * stepSec).coerceIn(minSec, maxSec)))
+    }
     OutlinedTextField(
         value = value,
         onValueChange = { v -> onChange(v.filter { it.isDigit() || it == ':' }.take(5)) },
         label = { Text(label) },
         singleLine = true,
+        trailingIcon = { StepArrows(onUp = { shift(1) }, onDown = { shift(-1) }) },
         modifier = Modifier.fillMaxWidth()
     )
 }

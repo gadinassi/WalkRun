@@ -47,6 +47,20 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.TilesOverlay
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
+import kotlin.math.roundToLong
 
 // ---------------- Statistics grid ----------------
 
@@ -95,16 +109,71 @@ fun GhostLine(diffMs: Long) {
 
 // ---------------- Number field ----------------
 
+/**
+ * Number input with ▲▼ arrows. Each tap adds or subtracts [step], kept inside [min]..[max].
+ * Holding an arrow repeats. Typing still works.
+ */
 @Composable
-fun NumberField(label: String, value: String, decimal: Boolean = false, onChange: (String) -> Unit) {
+fun NumberField(
+    label: String,
+    value: String,
+    decimal: Boolean = false,
+    step: Double = if (decimal) 0.1 else 1.0,
+    min: Double = 0.0,
+    max: Double = 100_000.0,
+    onChange: (String) -> Unit
+) {
+    // Number of decimals shown: the same as the step (0.5 -> 1, 0.1 -> 1, 1 -> 0).
+    val decimals = if (!decimal) 0 else step.toBigDecimal().stripTrailingZeros().scale().coerceAtLeast(1)
+    fun shift(sign: Int) {
+        val current = value.toDoubleOrNull() ?: min
+        // Snap to the step grid, so 5.37 + 0.5 gives 5.5 and not 5.87.
+        val next = (kotlin.math.round(current / step) + sign) * step
+        val clamped = next.coerceIn(min, max)
+        onChange(if (decimals == 0) clamped.roundToLong().toString() else String.format(Locale.US, "%.${decimals}f", clamped))
+    }
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
+        trailingIcon = { StepArrows(onUp = { shift(1) }, onDown = { shift(-1) }) },
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+/** Two small arrows, one above the other. Press and hold repeats. */
+@Composable
+fun StepArrows(onUp: () -> Unit, onDown: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        RepeatArrow(Icons.Filled.KeyboardArrowUp, "הגדלה", onUp)
+        RepeatArrow(Icons.Filled.KeyboardArrowDown, "הקטנה", onDown)
+    }
+}
+
+@Composable
+private fun RepeatArrow(icon: ImageVector, description: String, onStep: () -> Unit) {
+    val current by rememberUpdatedState(onStep)
+    val scope = rememberCoroutineScope()
+    Box(
+        Modifier
+            .size(width = 40.dp, height = 26.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(onPress = {
+                    val job = scope.launch {
+                        current()
+                        delay(450)
+                        while (true) { current(); delay(90) }
+                    }
+                    tryAwaitRelease()
+                    job.cancel()
+                })
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.primary)
+    }
 }
 
 // ---------------- Map (OpenStreetMap) ----------------
