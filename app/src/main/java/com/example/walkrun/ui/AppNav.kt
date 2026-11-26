@@ -77,8 +77,12 @@ fun AppNav(app: WalkRunApp) {
                 onOpenWorkout = { nav.navigate("summary/$it") },
                 onSettings = { nav.navigate("settings") },
                 onRecording = { nav.navigate("record") { launchSingleTop = true } },
-                onRecords = { nav.navigate("records") }
+                onRecords = { nav.navigate("records") },
+                onStats = { nav.navigate("stats") }
             )
+        }
+        composable("stats") {
+            StatsScreen(app, onBack = { nav.popBackStack() })
         }
         composable("records") {
             RecordsScreen(app, onBack = { nav.popBackStack() }, onOpenWorkout = { nav.navigate("summary/$it") })

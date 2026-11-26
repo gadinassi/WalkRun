@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.StrokeCap
@@ -53,7 +54,8 @@ fun HomeScreen(
     onOpenWorkout: (Long) -> Unit,
     onSettings: () -> Unit,
     onRecording: () -> Unit,
-    onRecords: () -> Unit
+    onRecords: () -> Unit,
+    onStats: () -> Unit
 ) {
     val reports by app.settings.reports.collectAsStateWithLifecycle(initialValue = ReportSettings())
     val training by app.settings.training.collectAsStateWithLifecycle(initialValue = TrainingSettings())
@@ -68,6 +70,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(account?.name?.let { "שלום, $it" } ?: "הליכה וריצה") },
                 actions = {
+                    IconButton(onClick = onStats) {
+                        Icon(Icons.Filled.DateRange, contentDescription = "לוח שנה וסטטיסטיקה")
+                    }
                     IconButton(onClick = onRecords) {
                         Icon(Icons.Filled.Star, contentDescription = "שיאים אישיים")
                     }

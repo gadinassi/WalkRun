@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.walkrun.WalkRunApp
 import com.example.walkrun.data.WorkoutEntity
+import com.example.walkrun.data.TrackPointEntity
+import com.example.walkrun.data.Analysis
+import androidx.compose.material3.FilterChip
 import com.example.walkrun.data.WorkoutType
 import com.example.walkrun.tracking.LatLon
 import com.example.walkrun.tracking.TrackingStatus
@@ -58,6 +61,8 @@ private const val MAX_TITLE = 40
 fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: () -> Unit) {
     var workout by remember { mutableStateOf<WorkoutEntity?>(null) }
     var segments by remember { mutableStateOf<List<List<LatLon>>>(emptyList()) }
+    var points by remember { mutableStateOf<List<TrackPointEntity>>(emptyList()) }
+    var heatMap by remember { mutableStateOf(false) }
     var compared by remember { mutableStateOf<WorkoutEntity?>(null) }
     var notFound by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -73,7 +78,8 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             notFound = true
             return@LaunchedEffect
         }
-        segments = app.workouts.getPoints(id)
+        points = app.workouts.getPoints(id)
+        segments = points
             .groupBy { it.segment }
             .toSortedMap()
             .values
@@ -103,12 +109,26 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (segments.isNotEmpty()) {
+                // Pace heat map: each ~100 m piece colored by its pace against the workout average.
+                val heat = remember(points) {
+                    val avg = Format.avgPace(w.durationMs, w.distanceM)
+                    if (avg == null) null
+                    else Analysis.pacePieces(points).map { (pts, pace) -> pts to Analysis.heatColor(pace, avg) }
+                }
                 OsmMap(
                     segments = segments,
                     reference = emptyList(),
                     followLast = false,
-                    modifier = Modifier.fillMaxWidth().height(260.dp)
+                    modifier = Modifier.fillMaxWidth().height(260.dp),
+                    colored = if (heatMap) heat else null
                 )
+                if (heat != null && heat.size > 1) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !heatMap, onClick = { heatMap = false }, label = { Text("מסלול") })
+                        FilterChip(selected = heatMap, onClick = { heatMap = true }, label = { Text("מפת קצב") })
+                        if (heatMap) HeatLegend()
+                    }
+                }
             }
             // Route title: tap to add or change it. All workouts of the same route get it.
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -168,6 +188,9 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             }
 
             SplitsSection(app, w)
+
+            val profile = remember(points) { Analysis.elevationProfile(points) }
+            ElevationCard(profile, w.elevationGainM)
 
             Button(
                 onClick = { start(WorkoutType.from(w.type), w.id) },
