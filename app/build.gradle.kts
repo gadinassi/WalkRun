@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -21,11 +23,33 @@ android {
         buildConfigField("String", "WEB_CLIENT_ID", "\"246895549277-cupplv185nkdj0iaids9139b6f9rek5c.apps.googleusercontent.com\"")
     }
 
+    // The permanent WalkRun key (signing/keystore.properties, not in git).
+    // Its SHA-1 is registered in Google Cloud, so sign-in, Gmail, Drive and updates depend on it.
+    // Without the file (for example on a new computer), the build falls back to the local debug key.
+    val signingProps = rootProject.file("signing/keystore.properties")
+    val walkrunKey = if (signingProps.exists()) {
+        val p = Properties().apply { signingProps.inputStream().use { load(it) } }
+        signingConfigs.create("walkrun") {
+            storeFile = rootProject.file("signing/" + p.getProperty("storeFile"))
+            storePassword = p.getProperty("storePassword")
+            keyAlias = p.getProperty("keyAlias")
+            keyPassword = p.getProperty("keyPassword")
+        }
+    } else null
+
     buildTypes {
+        debug {
+            walkrunKey?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = walkrunKey ?: signingConfigs.getByName("debug")
         }
+    }
+    testOptions {
+        // JVM unit tests: Android calls (like Log) return default values instead of throwing.
+        unitTests.isReturnDefaultValues = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -73,4 +97,6 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
     // Wear OS watch app: live data to the watch, pause/resume/stop from the watch.
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

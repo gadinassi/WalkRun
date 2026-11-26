@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,9 +20,25 @@ android {
         versionName = "1.0"
     }
 
+    // Same key as the phone app: the Data Layer links only apps signed with the same key.
+    val signingProps = rootProject.file("signing/keystore.properties")
+    val walkrunKey = if (signingProps.exists()) {
+        val p = Properties().apply { signingProps.inputStream().use { load(it) } }
+        signingConfigs.create("walkrun") {
+            storeFile = rootProject.file("signing/" + p.getProperty("storeFile"))
+            storePassword = p.getProperty("storePassword")
+            keyAlias = p.getProperty("keyAlias")
+            keyPassword = p.getProperty("keyPassword")
+        }
+    } else null
+
     buildTypes {
+        debug {
+            walkrunKey?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = walkrunKey ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

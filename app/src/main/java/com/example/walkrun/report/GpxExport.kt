@@ -18,6 +18,14 @@ object GpxExport {
     private val NAME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm").withZone(ZoneId.systemDefault())
 
     fun write(context: Context, w: WorkoutEntity, points: List<TrackPointEntity>): File {
+        val file = File(File(context.cacheDir, "reports").apply { mkdirs() },
+            "WalkRun_${NAME_FMT.format(Instant.ofEpochMilli(w.startTime))}.gpx")
+        file.writeText(build(w, points))
+        return file
+    }
+
+    /** The GPX text. No Android calls, so it is covered by unit tests. */
+    fun build(w: WorkoutEntity, points: List<TrackPointEntity>): String {
         val type = WorkoutType.from(w.type)
         val name = w.title ?: "${type.label} ${NAME_FMT.format(Instant.ofEpochMilli(w.startTime))}"
         val sb = StringBuilder()
@@ -38,10 +46,7 @@ object GpxExport {
             sb.append("    </trkseg>\n")
         }
         sb.append("  </trk>\n</gpx>\n")
-        val file = File(File(context.cacheDir, "reports").apply { mkdirs() },
-            "WalkRun_${NAME_FMT.format(Instant.ofEpochMilli(w.startTime))}.gpx")
-        file.writeText(sb.toString())
-        return file
+        return sb.toString()
     }
 
     /** Opens the share sheet with the GPX file. */

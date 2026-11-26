@@ -1,7 +1,7 @@
 package com.example.walkrun.data
 
-import android.location.Location
 import androidx.room.Entity
+import com.example.walkrun.util.Geo
 import androidx.room.PrimaryKey
 
 /**
@@ -31,11 +31,8 @@ object SegmentMatcher {
     private const val MIN_RATIO = 0.75
     private const val MAX_RATIO = 1.3
 
-    private fun dist(p: TrackPointEntity, lat: Double, lon: Double): Float {
-        val r = FloatArray(1)
-        Location.distanceBetween(p.lat, p.lon, lat, lon, r)
-        return r[0]
-    }
+    private fun dist(p: TrackPointEntity, lat: Double, lon: Double): Float =
+        Geo.distanceM(p.lat, p.lon, lat, lon).toFloat()
 
     /**
      * Fastest pass through [s] in the points of one workout, in active ms. Null = no pass.

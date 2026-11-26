@@ -18,6 +18,7 @@ captures/
 # Signing keys and secrets - never commit
 *.jks
 *.keystore
+signing/
 client_secret*.json
 google-services.json
 

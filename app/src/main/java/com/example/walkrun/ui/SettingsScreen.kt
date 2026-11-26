@@ -51,6 +51,7 @@ import com.example.walkrun.report.DriveBackup
 import com.example.walkrun.report.WalkRunWidget
 import com.example.walkrun.report.GoogleAccess
 import com.example.walkrun.util.Format
+import com.example.walkrun.util.TimeText
 import androidx.compose.material3.AlertDialog
 import androidx.health.connect.client.PermissionController
 import android.app.Activity
@@ -658,24 +659,9 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
 
 private const val DAY_MS = 86_400_000L
 
-/** 125 -> "2:05". */
-private fun mmss(sec: Int) = "${sec / 60}:${(sec % 60).toString().padStart(2, '0')}"
+private fun mmss(sec: Int) = TimeText.mmss(sec)
 
-/** "2:05" -> 125, "2" -> 120 (minutes). Null when the text is not a time. */
-private fun parseMmss(text: String): Int? {
-    val t = text.trim()
-    if (t.isEmpty()) return null
-    val parts = t.split(':')
-    return when (parts.size) {
-        1 -> parts[0].toIntOrNull()?.times(60)
-        2 -> {
-            val m = parts[0].toIntOrNull() ?: return null
-            val s = parts[1].toIntOrNull()?.takeIf { it in 0..59 } ?: return null
-            m * 60 + s
-        }
-        else -> null
-    }
-}
+private fun parseMmss(text: String): Int? = TimeText.parse(text)
 
 /** Time as m:ss, with ▲▼ arrows of [stepSec] seconds inside [minSec]..[maxSec]. */
 @Composable
