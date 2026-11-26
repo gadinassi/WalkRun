@@ -27,6 +27,7 @@ import com.example.walkrun.WalkRunApp
 import com.example.walkrun.data.AnnounceSettings
 import android.util.Log
 import com.example.walkrun.data.TrackPointEntity
+import com.example.walkrun.data.TrainingSettings
 import com.example.walkrun.data.Trend
 import com.example.walkrun.data.Week
 import com.example.walkrun.report.Reports
@@ -74,6 +75,11 @@ class TrackingService : LifecycleService(), SensorEventListener {
         private const val RUN_SPEED_MPS = 2.2
         private const val AUTO_TYPE_MIN_M = 200.0
         private const val MIN_PACE_DISTANCE_M = 20.0
+        /** No accepted movement for this long = the user stopped. */
+        private const val AUTO_PAUSE_MS = 12_000L
+        private const val AUTO_RESUME_M = 15f
+        private const val PACE_ALERT_GAP_MS = 60_000L
+        private const val PACE_ALERT_MIN_M = 200.0
 
         fun start(context: Context, type: WorkoutType, ghostWorkoutId: Long?) {
             val intent = Intent(context, TrackingService::class.java)
@@ -143,6 +149,15 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private var weekDoneM = 0.0
     private var goalAnnounced = false
 
+    // Training: auto-pause, pace alert, intervals
+    private var training = TrainingSettings()
+    /** True while the workout is paused because the user stopped moving (not the pause button). */
+    private var autoPaused = false
+    private var lastPaceAlert = 0L
+    private var intervals: Intervals? = null
+    private var intervalPhase = -1
+    private var intervalWarned = -1
+
     private var tickJob: Job? = null
     private var stopJob: Job? = null
 
@@ -205,11 +220,16 @@ class TrackingService : LifecycleService(), SensorEventListener {
         hasBarometer = false; baroAlt = null; elevation = ElevationGainTracker(4.0)
         ghostState = 0; lastGhostAlert = 0L; lastOffRouteAlert = 0L; lastStatusAnnounce = 0L
         goalM = 0.0; weekDoneM = 0.0; goalAnnounced = false
+        autoPaused = false; lastPaceAlert = 0L; intervals = null; intervalPhase = -1; intervalWarned = -1
     }
 
     private suspend fun begin(requestedGhostId: Long?) {
         profile = app.settings.profile.first()
         announce = app.settings.announce.first()
+        training = app.settings.training.first()
+        intervals = if (training.intervals) {
+            Intervals(training.workSec * 1000L, training.restSec * 1000L, training.repeats.coerceAtLeast(1))
+        } else null
         goalM = app.settings.reports.first().weeklyGoalKm * 1000.0
         if (goalM > 0) {
             val (from, to) = Week.currentRange()
@@ -242,20 +262,53 @@ class TrackingService : LifecycleService(), SensorEventListener {
         voice.speak(
             if (ghost != null) "האימון התחיל. השוואה לביצוע קודם במסלול." else "האימון התחיל."
         )
+        intervals?.let {
+            voice.speak("אינטרוולים: ${it.repeats} סבבים של ${Format.durationSpeech(training.workSec * 1000L)} ריצה " +
+                "ו-${Format.durationSpeech(training.restSec * 1000L)} הליכה.")
+        }
     }
 
-    private fun pause() {
+    /**
+     * [auto]: the user stopped moving. The standing time since the last movement is not counted.
+     * A manual pause during an auto-pause turns it into a manual pause.
+     */
+    private fun pause(auto: Boolean = false) {
+        if (status == TrackingStatus.PAUSED && autoPaused && !auto) {
+            autoPaused = false
+            voice.speak("האימון הושהה.")
+            publish()
+            return
+        }
         if (status != TrackingStatus.RECORDING) return
-        activeAccumMs += SystemClock.elapsedRealtime() - segmentStartRealtime
+        val now = SystemClock.elapsedRealtime()
+        val end = if (auto && lastAcceptRealtime > segmentStartRealtime) lastAcceptRealtime else now
+        activeAccumMs += end - segmentStartRealtime
         status = TrackingStatus.PAUSED
+        autoPaused = auto
         currentSpeed = 0f
-        voice.speak("האימון הושהה.")
+        voice.speak(if (auto) "עצירה. השהיה אוטומטית." else "האימון הושהה.")
+        publish()
+        updateNotification()
+    }
+
+    /** Moved again after an auto-pause. The distance from the stop point is counted; the line continues. */
+    private fun autoResume(loc: Location) {
+        // The user started moving before the 15 m were reached. Count that time too:
+        // distance from the stop point divided by the current speed (at most 15 seconds).
+        val moved = lastLoc?.distanceTo(loc)?.toDouble() ?: 0.0
+        val speed = if (loc.hasSpeed() && loc.speed > 0.5f) loc.speed.toDouble() else 1.3
+        val walkedMs = (moved / speed * 1000).toLong().coerceIn(0L, 15_000L)
+        segmentStartRealtime = SystemClock.elapsedRealtime() - walkedMs
+        status = TrackingStatus.RECORDING
+        autoPaused = false
+        voice.speak("ממשיכים.")
         publish()
         updateNotification()
     }
 
     private fun resume() {
         if (status != TrackingStatus.PAUSED) return
+        autoPaused = false
         segmentStartRealtime = SystemClock.elapsedRealtime()
         segment++
         segments.add(mutableListOf())
@@ -362,8 +415,13 @@ class TrackingService : LifecycleService(), SensorEventListener {
     }
 
     private fun onLocation(loc: Location) {
-        if (status != TrackingStatus.RECORDING) return
         if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) return
+        // Auto-paused: resume when the user moved away from the stop point.
+        if (status == TrackingStatus.PAUSED && autoPaused) {
+            val stop = lastLoc
+            if (stop == null || stop.distanceTo(loc) >= AUTO_RESUME_M) autoResume(loc) else return
+        }
+        if (status != TrackingStatus.RECORDING) return
 
         val alt = currentAltitude(loc)
         val elapsed = elapsedMs()
@@ -502,6 +560,9 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 if (status == TrackingStatus.RECORDING) {
                     if (SystemClock.elapsedRealtime() - lastAcceptRealtime > 6000) currentSpeed = 0f
                     checkTimeAnnouncement()
+                    checkIntervals()
+                    checkPaceAlert()
+                    checkAutoPause()
                 }
                 publish()
                 if (++n % 5 == 0) updateNotification()
@@ -515,6 +576,58 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val step = announce.distanceKm.coerceAtLeast(0.1) * 1000.0
         while (nextAnnounceDistance <= distanceM) nextAnnounceDistance += step
         speakStatus()
+    }
+
+    private fun checkAutoPause() {
+        if (!training.autoPause || points.isEmpty()) return
+        // Start after the first movement, and only from a recording segment.
+        val since = SystemClock.elapsedRealtime() - maxOf(lastAcceptRealtime, segmentStartRealtime)
+        if (since >= AUTO_PAUSE_MS) pause(auto = true)
+    }
+
+    /** Spoken when the recent pace is outside the range in the settings. */
+    private fun checkPaceAlert() {
+        if (!training.paceAlert || distanceM < PACE_ALERT_MIN_M) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPaceAlert < PACE_ALERT_GAP_MS) return
+        val pace = recentPaceSecPerKm()?.takeIf { it <= 3600 } ?: return
+        val text = when {
+            pace > training.slowPaceSec -> "קצב איטי, ${Format.paceSpeech(pace)} לקילומטר. הגבר."
+            pace < training.fastPaceSec -> "קצב מהיר, ${Format.paceSpeech(pace)} לקילומטר. האט."
+            else -> return
+        }
+        lastPaceAlert = now
+        voice.speak(text)
+    }
+
+    /** Announces each change of phase, and 5 seconds before it. */
+    private fun checkIntervals() {
+        val iv = intervals ?: return
+        val p = iv.at(elapsedMs())
+        if (p.index != intervalPhase) {
+            intervalPhase = p.index
+            voice.speak(
+                when {
+                    p.remainingMs == null -> "סיימת את כל ${iv.repeats} הסבבים. כל הכבוד!"
+                    p.work -> "ריצה! ${Format.durationSpeech(training.workSec * 1000L)}. סבב ${p.round} מתוך ${iv.repeats}."
+                    else -> "הליכה. ${Format.durationSpeech(training.restSec * 1000L)} מנוחה."
+                }
+            )
+            return
+        }
+        val left = p.remainingMs ?: return
+        if (left <= 5_000 && intervalWarned != p.index) {
+            intervalWarned = p.index
+            voice.speak("עוד 5 שניות.")
+        }
+    }
+
+    /** Text for the workout screen, for example "ריצה · סבב 3/8 · 1:12". */
+    private fun intervalLabel(): String? {
+        val iv = intervals ?: return null
+        val p = iv.at(elapsedMs())
+        val left = p.remainingMs ?: return "אינטרוולים: הסתיים"
+        return "${if (p.work) "ריצה" else "הליכה"} · סבב ${p.round}/${iv.repeats} · ${Format.duration(left + 999)}"
     }
 
     /** One announcement when this workout brings the week to the goal. */
@@ -661,7 +774,9 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 elevationGainM = elevation.gain,
                 segments = segmentsSnapshot,
                 reference = ghost?.path ?: emptyList(),
-                ghostDiffMs = ghostDiffMs(elapsed)
+                ghostDiffMs = ghostDiffMs(elapsed),
+                autoPaused = autoPaused,
+                intervalLabel = intervalLabel()
             )
         )
     }
@@ -698,8 +813,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val toggleLabel = if (paused) "המשך" else "השהיה"
         val toggleAction = if (paused) ACTION_RESUME else ACTION_PAUSE
         return NotificationCompat.Builder(this, WalkRunApp.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("${type.label} · ${if (paused) "מושהה" else "פעיל"}")
+            .setSmallIcon(com.example.walkrun.R.drawable.ic_launcher_monochrome)
+            .setContentTitle("${type.label} · ${if (paused) (if (autoPaused) "עצירה אוטומטית" else "מושהה") else "פעיל"}")
             .setContentText("${Format.km(distanceM)} ק\"מ · ${Format.duration(elapsedMs())}")
             .setOngoing(true)
             .setOnlyAlertOnce(true)

@@ -54,6 +54,21 @@ data class ReportSettings(
     val autoGmail: Boolean = false
 )
 
+/**
+ * Settings for the workout itself.
+ * Paces are seconds per km. Intervals: [workSec] effort, [restSec] rest, [repeats] rounds.
+ */
+data class TrainingSettings(
+    val autoPause: Boolean = true,
+    val paceAlert: Boolean = false,
+    val slowPaceSec: Int = 600,
+    val fastPaceSec: Int = 300,
+    val intervals: Boolean = false,
+    val workSec: Int = 120,
+    val restSec: Int = 60,
+    val repeats: Int = 8
+)
+
 enum class ThemeMode(val label: String) { SYSTEM("לפי המכשיר"), LIGHT("בהיר"), DARK("כהה") }
 
 /** Display settings. They apply at once, without the Save button. */
@@ -93,6 +108,14 @@ class SettingsRepository(private val context: Context) {
         val AUTO_GMAIL = booleanPreferencesKey("report_auto_gmail")
         val THEME = stringPreferencesKey("theme_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val AUTO_PAUSE = booleanPreferencesKey("auto_pause")
+        val PACE_ALERT = booleanPreferencesKey("pace_alert")
+        val SLOW_PACE = intPreferencesKey("pace_alert_slow_sec")
+        val FAST_PACE = intPreferencesKey("pace_alert_fast_sec")
+        val INTERVALS = booleanPreferencesKey("intervals")
+        val WORK_SEC = intPreferencesKey("interval_work_sec")
+        val REST_SEC = intPreferencesKey("interval_rest_sec")
+        val REPEATS = intPreferencesKey("interval_repeats")
         val NAME = stringPreferencesKey("account_name")
         val EMAIL = stringPreferencesKey("account_email")
     }
@@ -147,7 +170,35 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    val display: Flow<DisplaySettings> = context.dataStore.data.map { p ->
+    private val td = TrainingSettings()
+
+    val training: Flow<TrainingSettings> = context.dataStore.data.map { p ->
+        TrainingSettings(
+            autoPause = p[Keys.AUTO_PAUSE] ?: td.autoPause,
+            paceAlert = p[Keys.PACE_ALERT] ?: td.paceAlert,
+            slowPaceSec = p[Keys.SLOW_PACE] ?: td.slowPaceSec,
+            fastPaceSec = p[Keys.FAST_PACE] ?: td.fastPaceSec,
+            intervals = p[Keys.INTERVALS] ?: td.intervals,
+            workSec = p[Keys.WORK_SEC] ?: td.workSec,
+            restSec = p[Keys.REST_SEC] ?: td.restSec,
+            repeats = p[Keys.REPEATS] ?: td.repeats
+        )
+    }
+
+    suspend fun saveTraining(s: TrainingSettings) {
+        context.dataStore.edit {
+            it[Keys.AUTO_PAUSE] = s.autoPause
+            it[Keys.PACE_ALERT] = s.paceAlert
+            it[Keys.SLOW_PACE] = s.slowPaceSec
+            it[Keys.FAST_PACE] = s.fastPaceSec
+            it[Keys.INTERVALS] = s.intervals
+            it[Keys.WORK_SEC] = s.workSec
+            it[Keys.REST_SEC] = s.restSec
+            it[Keys.REPEATS] = s.repeats
+        }
+    }
+
+    val display: Flow<DisplaySettings> =context.dataStore.data.map { p ->
         DisplaySettings(
             theme = ThemeMode.entries.firstOrNull { it.name == p[Keys.THEME] } ?: ThemeMode.SYSTEM,
             keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: true

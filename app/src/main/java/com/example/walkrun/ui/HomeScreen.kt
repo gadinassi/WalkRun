@@ -19,6 +19,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.StrokeCap
 import com.example.walkrun.data.ReportSettings
+import com.example.walkrun.data.TrainingSettings
 import com.example.walkrun.data.Week
 import java.util.Locale
 import androidx.compose.material3.Button
@@ -55,6 +56,7 @@ fun HomeScreen(
     onRecords: () -> Unit
 ) {
     val reports by app.settings.reports.collectAsStateWithLifecycle(initialValue = ReportSettings())
+    val training by app.settings.training.collectAsStateWithLifecycle(initialValue = TrainingSettings())
     val workouts by app.workouts.all.collectAsStateWithLifecycle(initialValue = emptyList())
     val account by app.settings.account.collectAsStateWithLifecycle(initialValue = null)
     val configured by app.settings.profileConfigured.collectAsStateWithLifecycle(initialValue = true)
@@ -117,6 +119,15 @@ fun HomeScreen(
                             "הליכה או ריצה נקבעות אוטומטית לפי הקצב",
                             style = MaterialTheme.typography.bodySmall
                         )
+                        if (training.intervals) {
+                            fun t(s: Int) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
+                            Text(
+                                "אינטרוולים: ${training.repeats} × ריצה ${t(training.workSec)} / הליכה ${t(training.restSec)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }

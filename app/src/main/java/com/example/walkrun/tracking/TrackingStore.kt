@@ -27,7 +27,11 @@ data class TrackingSnapshot(
     /** Set after a workout is saved. The UI opens the summary and clears it. */
     val lastSavedWorkoutId: Long? = null,
     /** Set when a finished workout was too short to save. The UI tells the user and clears it. */
-    val discardedMinKm: Double? = null
+    val discardedMinKm: Double? = null,
+    /** Paused because the user stopped moving. Resumes by itself. */
+    val autoPaused: Boolean = false,
+    /** Current interval phase, for example "ריצה · סבב 3/8 · 1:12". Null = no intervals. */
+    val intervalLabel: String? = null
 )
 
 /** Shared state between TrackingService and the UI. */

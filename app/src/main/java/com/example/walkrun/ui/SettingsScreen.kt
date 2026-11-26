@@ -42,6 +42,7 @@ import com.example.walkrun.data.AnnounceSettings
 import com.example.walkrun.data.ReportSettings
 import com.example.walkrun.data.DisplaySettings
 import com.example.walkrun.data.ThemeMode
+import com.example.walkrun.data.TrainingSettings
 import com.example.walkrun.data.Sex
 import com.example.walkrun.report.Reports
 import com.example.walkrun.report.GmailSender
@@ -96,6 +97,14 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var repWeekly by remember { mutableStateOf(true) }
     var repImprove by remember { mutableStateOf(true) }
     var goalKm by remember { mutableStateOf("") }
+    var autoPause by remember { mutableStateOf(true) }
+    var paceAlert by remember { mutableStateOf(false) }
+    var slowPace by remember { mutableStateOf("") }
+    var fastPace by remember { mutableStateOf("") }
+    var intervalsOn by remember { mutableStateOf(false) }
+    var workTime by remember { mutableStateOf("") }
+    var restTime by remember { mutableStateOf("") }
+    var repeats by remember { mutableStateOf("") }
     var autoGmail by remember { mutableStateOf(false) }
     var gmailBusy by remember { mutableStateOf(false) }
     // The Google approval window for the gmail.send scope.
@@ -129,6 +138,15 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         repImprove = r.onImprovement
         goalKm = if (r.weeklyGoalKm > 0) r.weeklyGoalKm.toString() else "0"
         autoGmail = r.autoGmail
+        val tr = app.settings.training.first()
+        autoPause = tr.autoPause
+        paceAlert = tr.paceAlert
+        slowPace = mmss(tr.slowPaceSec)
+        fastPace = mmss(tr.fastPaceSec)
+        intervalsOn = tr.intervals
+        workTime = mmss(tr.workSec)
+        restTime = mmss(tr.restSec)
+        repeats = tr.repeats.toString()
         loaded = true
     }
 
@@ -190,6 +208,37 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     onCheckedChange = { on -> scope.launch { app.settings.saveDisplay(display.copy(keepScreenOn = on)) } }
                 )
                 Text("מסך דלוק בזמן אימון")
+            }
+
+            HorizontalDivider()
+
+            Text("אימון", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = autoPause, onCheckedChange = { autoPause = it })
+                Text("השהיה אוטומטית בעצירה (רמזור, מנוחה)")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = paceAlert, onCheckedChange = { paceAlert = it })
+                Text("התראת קצב")
+            }
+            if (paceAlert) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.weight(1f)) { TimeField("איטי מ- (דק':שנ')", slowPace) { slowPace = it } }
+                    Box(Modifier.weight(1f)) { TimeField("מהיר מ- (דק':שנ')", fastPace) { fastPace = it } }
+                }
+                Text("קצב לקילומטר. הודעה כשהקצב יוצא מהטווח, לכל היותר פעם בדקה.", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = intervalsOn, onCheckedChange = { intervalsOn = it })
+                Text("אינטרוולים (ריצה והליכה לסירוגין)")
+            }
+            if (intervalsOn) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.weight(1f)) { TimeField("ריצה (דק':שנ')", workTime) { workTime = it } }
+                    Box(Modifier.weight(1f)) { TimeField("הליכה (דק':שנ')", restTime) { restTime = it } }
+                    Box(Modifier.weight(0.7f)) { NumberField("סבבים", repeats) { repeats = it } }
+                }
+                Text("האינטרוולים פועלים בכל אימון כל עוד האפשרות מסומנת.", style = MaterialTheme.typography.bodySmall)
             }
 
             HorizontalDivider()
@@ -285,6 +334,11 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 val t = annTime.toIntOrNull()
                 val m = minSaveKm.toDoubleOrNull()
                 val g = goalKm.ifBlank { "0" }.toDoubleOrNull()
+                val slow = parseMmss(slowPace)
+                val fast = parseMmss(fastPace)
+                val work = parseMmss(workTime)
+                val rest = parseMmss(restTime)
+                val rep = repeats.toIntOrNull()
                 // A hidden (unchecked) field is not validated. Its last valid value is kept.
                 val error = when {
                     h == null || h !in 100..230 -> "גובה: ערך בין 100 ל-230 ס\"מ."
@@ -295,6 +349,12 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     annByTime && (t == null || t !in 1..120) -> "זמן הודעה: ערך בין 1 ל-120 דקות."
                     m == null || m !in 0.0..20.0 -> "אימון קצר: ערך בין 0 ל-20 ק\"מ."
                     g == null || g !in 0.0..500.0 -> "יעד שבועי: ערך בין 0 ל-500 ק\"מ."
+                    paceAlert && (slow == null || fast == null || slow !in 120..1800 || fast !in 120..1800) ->
+                        "התראת קצב: כתוב קצב בצורה 8:00, בין 2:00 ל-30:00."
+                    paceAlert && fast!! >= slow!! -> "התראת קצב: הקצב המהיר צריך להיות קטן מהאיטי."
+                    intervalsOn && (work == null || rest == null || work !in 10..3600 || rest !in 10..3600) ->
+                        "אינטרוולים: זמנים בצורה 2:00, בין 0:10 ל-60:00."
+                    intervalsOn && (rep == null || rep !in 1..50) -> "אינטרוולים: מספר סבבים בין 1 ל-50."
                     else -> null
                 }
                 if (error != null) {
@@ -311,6 +371,19 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                             byTime = annByTime,
                             distanceKm = d?.takeIf { it in 0.1..50.0 } ?: defaults.distanceKm,
                             timeMin = t?.takeIf { it in 1..120 } ?: defaults.timeMin
+                        )
+                    )
+                    val oldTr = app.settings.training.first()
+                    app.settings.saveTraining(
+                        TrainingSettings(
+                            autoPause = autoPause,
+                            paceAlert = paceAlert,
+                            slowPaceSec = slow?.takeIf { paceAlert } ?: oldTr.slowPaceSec,
+                            fastPaceSec = fast?.takeIf { paceAlert } ?: oldTr.fastPaceSec,
+                            intervals = intervalsOn,
+                            workSec = work?.takeIf { intervalsOn } ?: oldTr.workSec,
+                            restSec = rest?.takeIf { intervalsOn } ?: oldTr.restSec,
+                            repeats = rep?.takeIf { intervalsOn } ?: oldTr.repeats
                         )
                     )
                     app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove, g!!, autoGmail))
@@ -405,4 +478,34 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
 }
 
 private const val DAY_MS = 86_400_000L
+
+/** 125 -> "2:05". */
+private fun mmss(sec: Int) = "${sec / 60}:${(sec % 60).toString().padStart(2, '0')}"
+
+/** "2:05" -> 125, "2" -> 120 (minutes). Null when the text is not a time. */
+private fun parseMmss(text: String): Int? {
+    val t = text.trim()
+    if (t.isEmpty()) return null
+    val parts = t.split(':')
+    return when (parts.size) {
+        1 -> parts[0].toIntOrNull()?.times(60)
+        2 -> {
+            val m = parts[0].toIntOrNull() ?: return null
+            val s = parts[1].toIntOrNull()?.takeIf { it in 0..59 } ?: return null
+            m * 60 + s
+        }
+        else -> null
+    }
+}
+
+@Composable
+private fun TimeField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { v -> onChange(v.filter { it.isDigit() || it == ':' }.take(5)) },
+        label = { Text(label) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
 private val BIRTH_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy")

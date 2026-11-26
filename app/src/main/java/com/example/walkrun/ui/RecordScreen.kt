@@ -47,7 +47,7 @@ fun RecordScreen(keepScreenOn: Boolean, onBack: () -> Unit) {
 
     val statusText = when (s.status) {
         TrackingStatus.RECORDING -> "מקליט"
-        TrackingStatus.PAUSED -> "מושהה"
+        TrackingStatus.PAUSED -> if (s.autoPaused) "עצירה אוטומטית" else "מושהה"
         TrackingStatus.SAVING -> "שומר"
         TrackingStatus.IDLE -> "ממתין"
     }
@@ -74,11 +74,26 @@ fun RecordScreen(keepScreenOn: Boolean, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            s.intervalLabel?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (it.startsWith("ריצה")) StopRed else StartGreen
+                )
+            }
             Text(
                 Format.duration(s.elapsedMs),
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Bold
             )
+            if (s.autoPaused) {
+                Text(
+                    "עצירה אוטומטית. האימון ימשיך לבד כשתזוז.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
             StatGrid(
                 listOf(
                     "מרחק (ק\"מ)" to Format.km(s.distanceM),
