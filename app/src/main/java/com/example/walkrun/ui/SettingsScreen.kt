@@ -39,7 +39,9 @@ import com.example.walkrun.auth.GoogleAuth
 import com.example.walkrun.auth.SignInCancelledException
 import com.example.walkrun.data.Account
 import com.example.walkrun.data.AnnounceSettings
+import com.example.walkrun.data.ReportSettings
 import com.example.walkrun.data.Sex
+import com.example.walkrun.report.Reports
 import com.example.walkrun.data.UserProfile
 import com.example.walkrun.tracking.TrackingStatus
 import com.example.walkrun.tracking.TrackingStore
@@ -81,6 +83,9 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var annByTime by remember { mutableStateOf(false) }
     var annDistance by remember { mutableStateOf("") }
     var annTime by remember { mutableStateOf("") }
+    var minSaveKm by remember { mutableStateOf("") }
+    var repWeekly by remember { mutableStateOf(true) }
+    var repImprove by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         val p = app.settings.profile.first()
@@ -94,6 +99,10 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         annByTime = a.byTime
         annDistance = a.distanceKm.toString()
         annTime = a.timeMin.toString()
+        val r = app.settings.reports.first()
+        minSaveKm = r.minSaveKm.toString()
+        repWeekly = r.weekly
+        repImprove = r.onImprovement
         loaded = true
     }
 
@@ -158,12 +167,30 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                 NumberField("כל כמה דקות", annTime) { annTime = it }
             }
 
+            HorizontalDivider()
+
+            Text("היסטוריה ודוחות", style = MaterialTheme.typography.titleMedium)
+            NumberField("לא לשמור אימון קצר מ- (ק\"מ)", minSaveKm, decimal = true) { minSaveKm = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = repWeekly, onCheckedChange = { repWeekly = it })
+                Text("דוח שבועי במייל (יום ראשון בבוקר)")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = repImprove, onCheckedChange = { repImprove = it })
+                Text("דוח במייל כשיש שיפור")
+            }
+            OutlinedButton(
+                onClick = { scope.launch { Reports.openWeeklyEmail(context, app) } },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("שליחת הדוח השבועי עכשיו") }
+
             Button(onClick = {
                 val h = height.toIntOrNull()
                 val w = weight.toDoubleOrNull()
                 val a = Period.between(birth, LocalDate.now()).years
                 val d = annDistance.toDoubleOrNull()
                 val t = annTime.toIntOrNull()
+                val m = minSaveKm.toDoubleOrNull()
                 // A hidden (unchecked) field is not validated. Its last valid value is kept.
                 val error = when {
                     h == null || h !in 100..230 -> "גובה: ערך בין 100 ל-230 ס\"מ."
@@ -172,6 +199,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     annEnabled && !annByDistance && !annByTime -> "הודעות קוליות: בחר מרחק, זמן או שניהם."
                     annByDistance && (d == null || d !in 0.1..50.0) -> "מרחק הודעה: ערך בין 0.1 ל-50 ק\"מ."
                     annByTime && (t == null || t !in 1..120) -> "זמן הודעה: ערך בין 1 ל-120 דקות."
+                    m == null || m !in 0.0..20.0 -> "אימון קצר: ערך בין 0 ל-20 ק\"מ."
                     else -> null
                 }
                 if (error != null) {
@@ -190,6 +218,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                             timeMin = t?.takeIf { it in 1..120 } ?: defaults.timeMin
                         )
                     )
+                    app.settings.saveReports(ReportSettings(m!!, repWeekly, repImprove))
                     Toast.makeText(context, "ההגדרות נשמרו.", Toast.LENGTH_SHORT).show()
                     onBack()
                 }

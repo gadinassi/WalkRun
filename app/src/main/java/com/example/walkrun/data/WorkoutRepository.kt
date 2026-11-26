@@ -29,6 +29,8 @@ class WorkoutRepository(private val db: AppDatabase) {
     suspend fun history(type: String, from: Long, before: Long): List<WorkoutEntity> =
         dao.history(type, from, before)
 
+    suspend fun between(from: Long, before: Long): List<WorkoutEntity> = dao.between(from, before)
+
     /** Points of a saved workout never change, so the splits are calculated one time and kept. */
     private val splitCache = HashMap<Pair<Long, SplitUnit>, List<Split>>()
 

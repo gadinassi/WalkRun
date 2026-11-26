@@ -26,10 +26,12 @@ class WalkRunApp : Application() {
             osmdroidTileCache = File(cacheDir, "osmdroid/tiles")
         }
         val channel = NotificationChannel(CHANNEL_ID, "אימון פעיל", NotificationManager.IMPORTANCE_LOW)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val reports = NotificationChannel(REPORT_CHANNEL_ID, "דוחות", NotificationManager.IMPORTANCE_DEFAULT)
+        getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(channel, reports))
     }
 
     companion object {
         const val CHANNEL_ID = "workout_tracking"
+        const val REPORT_CHANNEL_ID = "reports"
     }
 }

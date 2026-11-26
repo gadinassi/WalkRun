@@ -25,7 +25,10 @@ import androidx.lifecycle.lifecycleScope
 import com.example.walkrun.MainActivity
 import com.example.walkrun.WalkRunApp
 import com.example.walkrun.data.AnnounceSettings
+import android.util.Log
 import com.example.walkrun.data.TrackPointEntity
+import com.example.walkrun.data.Trend
+import com.example.walkrun.report.Reports
 import com.example.walkrun.data.UserProfile
 import com.example.walkrun.data.WorkoutEntity
 import com.example.walkrun.data.WorkoutType
@@ -269,6 +272,19 @@ class TrackingService : LifecycleService(), SensorEventListener {
         publish()
 
         val duration = activeAccumMs
+        val reports = app.settings.reports.first()
+        if (distanceM < reports.minSaveKm * 1000.0) {
+            // Too short (for example, stopped right after start): not saved in the history.
+            status = TrackingStatus.IDLE
+            TrackingStore.update(TrackingSnapshot(discardedMinKm = reports.minSaveKm))
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            voice.speak("האימון קצר מ-${Format.distanceSpeech(reports.minSaveKm * 1000.0)} ולא נשמר.")
+            stopJob = lifecycleScope.launch {
+                delay(8_000)
+                stopSelf()
+            }
+            return
+        }
         type = autoType()
         val (steps, estimated) = stepsInfo()
         val workout = WorkoutEntity(
@@ -294,6 +310,10 @@ class TrackingService : LifecycleService(), SensorEventListener {
         TrackingStore.update(TrackingSnapshot(lastSavedWorkoutId = id))
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}")
+        if (saved != null && saved.trend == Trend.IMPROVED.name && reports.onImprovement) {
+            runCatching { Reports.notifyImprovement(this, app, saved) }
+                .onFailure { Log.w("Reports", "Improvement report failed", it) }
+        }
         // Keep the service alive for a short time, so the final announcement can complete.
         stopJob = lifecycleScope.launch {
             delay(12_000)

@@ -52,6 +52,10 @@ interface WorkoutDao {
     )
     suspend fun history(type: String, from: Long, before: Long): List<WorkoutEntity>
 
+    /** All workouts that started in [from, before). Oldest first. */
+    @Query("SELECT * FROM workouts WHERE startTime >= :from AND startTime < :before ORDER BY startTime")
+    suspend fun between(from: Long, before: Long): List<WorkoutEntity>
+
     /** Sets the title of every workout on the route that starts with workout [rootId]. */
     @Query("UPDATE workouts SET title = :title WHERE id = :rootId OR routeId = :rootId")
     suspend fun setRouteTitle(rootId: Long, title: String?)

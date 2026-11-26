@@ -20,6 +20,10 @@ import androidx.navigation.navArgument
 import com.example.walkrun.WalkRunApp
 import com.example.walkrun.tracking.TrackingStore
 import kotlinx.coroutines.flow.first
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.example.walkrun.report.WeeklyReportReceiver
+import java.util.Locale
 
 @Composable
 fun AppNav(app: WalkRunApp) {
@@ -42,6 +46,19 @@ fun AppNav(app: WalkRunApp) {
         TrackingStore.consumeSaved()
         nav.navigate("summary/$id") { popUpTo("home") }
     }
+    val context = LocalContext.current
+    LaunchedEffect(tracking.discardedMinKm) {
+        val min = tracking.discardedMinKm ?: return@LaunchedEffect
+        TrackingStore.consumeSaved()
+        Toast.makeText(
+            context,
+            "האימון קצר מ-${String.format(Locale.US, "%.2f", min)} ק\"מ ולא נשמר בהיסטוריה.",
+            Toast.LENGTH_LONG
+        ).show()
+        nav.popBackStack("home", inclusive = false)
+    }
+    // The weekly report alarm. Setting it again is harmless; it keeps it after an update.
+    LaunchedEffect(Unit) { WeeklyReportReceiver.schedule(context) }
 
     NavHost(navController = nav, startDestination = startRoute) {
         composable("login") {

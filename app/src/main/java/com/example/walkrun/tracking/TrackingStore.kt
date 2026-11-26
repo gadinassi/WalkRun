@@ -25,7 +25,9 @@ data class TrackingSnapshot(
     /** Positive = slower than the reference workout. Null = no comparison. */
     val ghostDiffMs: Long? = null,
     /** Set after a workout is saved. The UI opens the summary and clears it. */
-    val lastSavedWorkoutId: Long? = null
+    val lastSavedWorkoutId: Long? = null,
+    /** Set when a finished workout was too short to save. The UI tells the user and clears it. */
+    val discardedMinKm: Double? = null
 )
 
 /** Shared state between TrackingService and the UI. */
@@ -38,6 +40,6 @@ object TrackingStore {
     }
 
     fun consumeSaved() {
-        _state.update { it.copy(lastSavedWorkoutId = null) }
+        _state.update { it.copy(lastSavedWorkoutId = null, discardedMinKm = null) }
     }
 }

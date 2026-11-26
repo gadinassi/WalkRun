@@ -40,6 +40,16 @@ data class AnnounceSettings(
     val timeMin: Int = 5
 )
 
+/**
+ * [minSaveKm]: a workout shorter than this is not saved.
+ * [weekly] / [onImprovement]: when to prepare an email report.
+ */
+data class ReportSettings(
+    val minSaveKm: Double = 0.2,
+    val weekly: Boolean = true,
+    val onImprovement: Boolean = true
+)
+
 data class Account(val name: String, val email: String) {
     companion object {
         /** Local user without a Google account. */
@@ -63,6 +73,9 @@ class SettingsRepository(private val context: Context) {
         val ANN_BY_TIME = booleanPreferencesKey("announce_by_time")
         val ANN_DISTANCE = doublePreferencesKey("announce_distance_km")
         val ANN_TIME = intPreferencesKey("announce_time_min")
+        val MIN_SAVE_KM = doublePreferencesKey("min_save_km")
+        val REPORT_WEEKLY = booleanPreferencesKey("report_weekly")
+        val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
         val NAME = stringPreferencesKey("account_name")
         val EMAIL = stringPreferencesKey("account_email")
     }
@@ -93,6 +106,24 @@ class SettingsRepository(private val context: Context) {
             distanceKm = p[Keys.ANN_DISTANCE] ?: ad.distanceKm,
             timeMin = p[Keys.ANN_TIME] ?: ad.timeMin
         )
+    }
+
+    private val rd = ReportSettings()
+
+    val reports: Flow<ReportSettings> = context.dataStore.data.map { p ->
+        ReportSettings(
+            minSaveKm = p[Keys.MIN_SAVE_KM] ?: rd.minSaveKm,
+            weekly = p[Keys.REPORT_WEEKLY] ?: rd.weekly,
+            onImprovement = p[Keys.REPORT_IMPROVE] ?: rd.onImprovement
+        )
+    }
+
+    suspend fun saveReports(settings: ReportSettings) {
+        context.dataStore.edit {
+            it[Keys.MIN_SAVE_KM] = settings.minSaveKm
+            it[Keys.REPORT_WEEKLY] = settings.weekly
+            it[Keys.REPORT_IMPROVE] = settings.onImprovement
+        }
     }
 
     val account: Flow<Account?> = context.dataStore.data.map { p ->
