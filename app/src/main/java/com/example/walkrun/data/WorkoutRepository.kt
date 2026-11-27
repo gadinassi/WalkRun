@@ -3,6 +3,7 @@ package com.example.walkrun.data
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
@@ -55,6 +56,25 @@ class WorkoutRepository(private val db: AppDatabase) {
     suspend fun ofType(type: String): List<WorkoutEntity> = dao.ofType(type)
 
     suspend fun allOnce(): List<WorkoutEntity> = dao.allOnce()
+
+    // ---------------- Shoes ----------------
+
+    val shoes: Flow<List<ShoeEntity>> = dao.observeShoes()
+
+    /** Meters per shoe id. */
+    val shoeTotals: Flow<Map<Long, Double>> = dao.observeShoeTotals().map { l -> l.associate { it.shoeId to it.meters } }
+
+    suspend fun addShoe(s: ShoeEntity): Long = dao.insertShoe(s)
+    suspend fun updateShoe(s: ShoeEntity) = dao.updateShoe(s)
+    suspend fun getShoe(id: Long): ShoeEntity? = dao.getShoe(id)
+    suspend fun shoeMeters(id: Long): Double = dao.shoeMeters(id)
+    suspend fun setWorkoutShoe(workoutId: Long, shoeId: Long?) = dao.setWorkoutShoe(workoutId, shoeId)
+
+    /** The workouts stay; they lose the link to this shoe. */
+    suspend fun deleteShoe(id: Long) = db.withTransaction {
+        dao.clearShoe(id)
+        dao.deleteShoe(id)
+    }
 
     // ---------------- Segments ----------------
 

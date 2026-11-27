@@ -21,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.StrokeCap
 import com.example.walkrun.data.ReportSettings
 import com.example.walkrun.data.TrainingSettings
+import com.example.walkrun.data.TrainingPlan
+import androidx.compose.material3.TextButton
 import com.example.walkrun.data.Week
 import java.util.Locale
 import androidx.compose.material3.Button
@@ -55,10 +57,17 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onRecording: () -> Unit,
     onRecords: () -> Unit,
-    onStats: () -> Unit
+    onStats: () -> Unit,
+    onShoes: () -> Unit,
+    onPlan: () -> Unit
 ) {
     val reports by app.settings.reports.collectAsStateWithLifecycle(initialValue = ReportSettings())
     val training by app.settings.training.collectAsStateWithLifecycle(initialValue = TrainingSettings())
+    val shoes by app.workouts.shoes.collectAsStateWithLifecycle(initialValue = emptyList())
+    val shoeTotals by app.workouts.shoeTotals.collectAsStateWithLifecycle(initialValue = emptyMap())
+    val currentShoe by app.settings.currentShoe.collectAsStateWithLifecycle(initialValue = 0L)
+    val planActive by app.settings.planActive.collectAsStateWithLifecycle(initialValue = false)
+    val planDone by app.settings.planDone.collectAsStateWithLifecycle(initialValue = emptySet())
     val workouts by app.workouts.all.collectAsStateWithLifecycle(initialValue = emptyList())
     val account by app.settings.account.collectAsStateWithLifecycle(initialValue = null)
     val configured by app.settings.profileConfigured.collectAsStateWithLifecycle(initialValue = true)
@@ -118,7 +127,7 @@ fun HomeScreen(
                             color = StartGreen,
                             size = 128.dp,
                             description = "התחלת אימון"
-                        ) { start(WorkoutType.WALK, null) }
+                        ) { start(WorkoutType.WALK, null, null) }
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "הליכה או ריצה נקבעות אוטומטית לפי הקצב",
@@ -136,6 +145,29 @@ fun HomeScreen(
                     }
                 }
             }
+            // Training plan: the next session with a start button, or a link to the plan.
+            item {
+                val next = TrainingPlan.next(planDone)
+                if (planActive && next != null) {
+                    Card(onClick = onPlan, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("📋 תוכנית: שבוע ${next.week}, אימון ${next.day}", fontWeight = FontWeight.Bold)
+                                Text(next.description, style = MaterialTheme.typography.bodySmall)
+                            }
+                            RoundIconButton(
+                                glyph = Glyph.PLAY, color = StartGreen, size = 48.dp,
+                                description = "התחלת האימון בתוכנית",
+                                enabled = tracking.status == TrackingStatus.IDLE
+                            ) { start(WorkoutType.RUN, null, next.key) }
+                        }
+                    }
+                } else {
+                    TextButton(onClick = onPlan) {
+                        Text(if (planActive) "📋 התוכנית הושלמה ›" else "📋 תוכנית אימונים: ${TrainingPlan.NAME} ›")
+                    }
+                }
+            }
             if (reports.weeklyGoalKm > 0) {
                 item {
                     val (from, to) = remember(workouts) { Week.currentRange() }
@@ -148,6 +180,28 @@ fun HomeScreen(
                     GoalCard("📅 יעד חודשי", "החודש", workouts.filter { it.startTime in from until to }, reports.monthlyGoalKm, Week.monthDaysLeft(), "סוף החודש")
                 }
             }
+            // The current shoes, when the user tracks shoes.
+            shoes.firstOrNull { it.id == currentShoe && !it.retired }?.let { s ->
+                item {
+                    val used = com.example.walkrun.data.ShoeWear.used(shoeTotals[s.id] ?: 0.0, s.limitKm)
+                    Card(onClick = onShoes, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("👟 ${s.name}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text(String.format(Locale.US, "%.0f / %.0f ק\"מ", (shoeTotals[s.id] ?: 0.0) / 1000, s.limitKm))
+                            }
+                            LinearProgressIndicator(
+                                progress = { used.toFloat().coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                color = wearColor(used),
+                                strokeCap = StrokeCap.Round,
+                                drawStopIndicator = {}
+                            )
+                            if (used >= 1.0) Text("הגיע הזמן להחליף נעליים.", color = StopRed, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             item { Text("היסטוריה", style = MaterialTheme.typography.titleMedium) }
             if (workouts.isEmpty()) {
                 item { Text("אין פעילויות שמורות.") }
@@ -158,7 +212,7 @@ fun HomeScreen(
                     // A new run of this route, with live comparison to this workout.
                     // Only when no workout is active, and the route is long enough to compare.
                     onRepeat = if (tracking.status == TrackingStatus.IDLE && w.distanceM >= MIN_REPEAT_M) {
-                        { start(WorkoutType.from(w.type), w.id) }
+                        { start(WorkoutType.from(w.type), w.id, null) }
                     } else null,
                     onClick = { onOpenWorkout(w.id) }
                 )

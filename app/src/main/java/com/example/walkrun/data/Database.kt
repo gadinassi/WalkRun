@@ -83,9 +83,40 @@ interface WorkoutDao {
 
     @Query("DELETE FROM route_segments WHERE id = :id")
     suspend fun deleteSegment(id: Long)
+
+    @Insert
+    suspend fun insertShoe(s: ShoeEntity): Long
+
+    @Update
+    suspend fun updateShoe(s: ShoeEntity)
+
+    @Query("SELECT * FROM shoes ORDER BY retired, addedAt DESC")
+    fun observeShoes(): Flow<List<ShoeEntity>>
+
+    @Query("SELECT * FROM shoes WHERE id = :id")
+    suspend fun getShoe(id: Long): ShoeEntity?
+
+    @Query("SELECT shoeId, SUM(distanceM) AS meters FROM workouts WHERE shoeId IS NOT NULL GROUP BY shoeId")
+    fun observeShoeTotals(): Flow<List<ShoeTotal>>
+
+    @Query("SELECT COALESCE(SUM(distanceM), 0) FROM workouts WHERE shoeId = :shoeId")
+    suspend fun shoeMeters(shoeId: Long): Double
+
+    @Query("UPDATE workouts SET shoeId = :shoeId WHERE id = :workoutId")
+    suspend fun setWorkoutShoe(workoutId: Long, shoeId: Long?)
+
+    @Query("UPDATE workouts SET shoeId = NULL WHERE shoeId = :shoeId")
+    suspend fun clearShoe(shoeId: Long)
+
+    @Query("DELETE FROM shoes WHERE id = :id")
+    suspend fun deleteShoe(id: Long)
 }
 
-@Database(entities = [WorkoutEntity::class, TrackPointEntity::class, SegmentEntity::class], version = 4, exportSchema = false)
+@Database(
+    entities = [WorkoutEntity::class, TrackPointEntity::class, SegmentEntity::class, ShoeEntity::class],
+    version = 5,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
 
@@ -120,9 +151,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 5: shoes, and the shoe of each workout. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS shoes (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, limitKm REAL NOT NULL, " +
+                        "retired INTEGER NOT NULL, addedAt INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE workouts ADD COLUMN shoeId INTEGER")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "walkrun.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

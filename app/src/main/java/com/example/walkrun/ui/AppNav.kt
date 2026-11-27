@@ -69,7 +69,7 @@ fun AppNav(app: WalkRunApp) {
     LaunchedEffect(startRequested) {
         if (!startRequested) return@LaunchedEffect
         StartRequest.pending.value = false
-        if (TrackingStore.state.value.status == TrackingStatus.IDLE) starter(WorkoutType.WALK, null)
+        if (TrackingStore.state.value.status == TrackingStatus.IDLE) starter(WorkoutType.WALK, null, null)
         else nav.navigate("record") { launchSingleTop = true }
     }
     LaunchedEffect(Unit) {
@@ -92,7 +92,9 @@ fun AppNav(app: WalkRunApp) {
                 onSettings = { nav.navigate("settings") },
                 onRecording = { nav.navigate("record") { launchSingleTop = true } },
                 onRecords = { nav.navigate("records") },
-                onStats = { nav.navigate("stats") }
+                onStats = { nav.navigate("stats") },
+                onShoes = { nav.navigate("shoes") },
+                onPlan = { nav.navigate("plan") }
             )
         }
         composable("stats") {
@@ -128,8 +130,15 @@ fun AppNav(app: WalkRunApp) {
                 onBack = { nav.popBackStack() },
                 onSignedOut = {
                     nav.navigate("login") { popUpTo(nav.graph.id) { inclusive = true } }
-                }
+                },
+                onShoes = { nav.navigate("shoes") }
             )
+        }
+        composable("shoes") {
+            ShoesScreen(app, onBack = { nav.popBackStack() })
+        }
+        composable("plan") {
+            PlanScreen(app, onBack = { nav.popBackStack() }, onRecording = { nav.navigate("record") { launchSingleTop = true } })
         }
     }
 }

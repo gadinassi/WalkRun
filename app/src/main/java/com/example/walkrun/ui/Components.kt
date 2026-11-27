@@ -323,17 +323,17 @@ private fun requiredPermissions(): List<String> = buildList {
  * It asks for missing permissions first. Precise location is mandatory. The other permissions are optional.
  */
 @Composable
-fun rememberWorkoutStarter(onStarted: () -> Unit): (WorkoutType, Long?) -> Unit {
+fun rememberWorkoutStarter(onStarted: () -> Unit): (WorkoutType, Long?, String?) -> Unit {
     val context = LocalContext.current
     val currentOnStarted by rememberUpdatedState(onStarted)
-    var pending by remember { mutableStateOf<Pair<WorkoutType, Long?>?>(null) }
+    var pending by remember { mutableStateOf<Triple<WorkoutType, Long?, String?>?>(null) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val request = pending
         pending = null
         if (request == null) return@rememberLauncherForActivityResult
         if (hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)) {
-            TrackingService.start(context, request.first, request.second)
+            TrackingService.start(context, request.first, request.second, request.third)
             currentOnStarted()
         } else {
             Toast.makeText(context, "נדרשת הרשאת מיקום מדויק כדי להקליט אימון.", Toast.LENGTH_LONG).show()
@@ -341,13 +341,13 @@ fun rememberWorkoutStarter(onStarted: () -> Unit): (WorkoutType, Long?) -> Unit 
     }
 
     return remember(context, launcher) {
-        { type: WorkoutType, ghostId: Long? ->
+        { type: WorkoutType, ghostId: Long?, planKey: String? ->
             val missing = requiredPermissions().filterNot { hasPermission(context, it) }
             if (missing.isEmpty()) {
-                TrackingService.start(context, type, ghostId)
+                TrackingService.start(context, type, ghostId, planKey)
                 currentOnStarted()
             } else {
-                pending = type to ghostId
+                pending = Triple(type, ghostId, planKey)
                 launcher.launch(missing.toTypedArray())
             }
         }

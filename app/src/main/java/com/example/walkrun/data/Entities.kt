@@ -55,7 +55,9 @@ data class WorkoutEntity(
     /** True after the best times were calculated from the points. */
     @ColumnInfo(defaultValue = "0") val bestsDone: Boolean = false,
     /** Personal records set by this workout: RecordKind names, comma-separated. */
-    val newRecords: String? = null
+    val newRecords: String? = null,
+    /** The shoes worn. Null = not recorded. */
+    val shoeId: Long? = null
 ) {
     fun bestMs(kind: RecordKind): Long? = when (kind) {
         RecordKind.KM1 -> best1kMs

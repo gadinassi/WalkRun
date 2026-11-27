@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -37,7 +38,11 @@ data class AnnounceSettings(
     val byDistance: Boolean = true,
     val byTime: Boolean = false,
     val distanceKm: Double = 1.0,
-    val timeMin: Int = 5
+    val timeMin: Int = 5,
+    /** Turn music from other apps down while speaking. */
+    val duckMusic: Boolean = true,
+    /** After each km: its time and the change from the km before. */
+    val kmSummary: Boolean = true
 )
 
 /**
@@ -103,6 +108,8 @@ class SettingsRepository(private val context: Context) {
         val ANN_BY_TIME = booleanPreferencesKey("announce_by_time")
         val ANN_DISTANCE = doublePreferencesKey("announce_distance_km")
         val ANN_TIME = intPreferencesKey("announce_time_min")
+        val ANN_DUCK = booleanPreferencesKey("announce_duck_music")
+        val ANN_KM_SUMMARY = booleanPreferencesKey("announce_km_summary")
         val MIN_SAVE_KM = doublePreferencesKey("min_save_km")
         val REPORT_WEEKLY = booleanPreferencesKey("report_weekly")
         val REPORT_IMPROVE = booleanPreferencesKey("report_on_improvement")
@@ -114,6 +121,9 @@ class SettingsRepository(private val context: Context) {
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause")
         val HEALTH_CONNECT = booleanPreferencesKey("health_connect")
         val DRIVE_BACKUP = booleanPreferencesKey("drive_backup")
+        val CURRENT_SHOE = longPreferencesKey("current_shoe_id")
+        val PLAN_ACTIVE = booleanPreferencesKey("plan_active")
+        val PLAN_DONE = stringSetPreferencesKey("plan_done")
         val LAST_BACKUP = longPreferencesKey("last_backup_ms")
         val PACE_ALERT = booleanPreferencesKey("pace_alert")
         val SLOW_PACE = intPreferencesKey("pace_alert_slow_sec")
@@ -150,7 +160,9 @@ class SettingsRepository(private val context: Context) {
             byDistance = p[Keys.ANN_BY_DISTANCE] ?: oldMode?.let { it == "DISTANCE" } ?: ad.byDistance,
             byTime = p[Keys.ANN_BY_TIME] ?: oldMode?.let { it == "TIME" } ?: ad.byTime,
             distanceKm = p[Keys.ANN_DISTANCE] ?: ad.distanceKm,
-            timeMin = p[Keys.ANN_TIME] ?: ad.timeMin
+            timeMin = p[Keys.ANN_TIME] ?: ad.timeMin,
+            duckMusic = p[Keys.ANN_DUCK] ?: ad.duckMusic,
+            kmSummary = p[Keys.ANN_KM_SUMMARY] ?: ad.kmSummary
         )
     }
 
@@ -232,6 +244,29 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.LAST_BACKUP] = ms }
     }
 
+    /** The training plan: on or off, and the sessions done (PlanSession keys like "2-3"). */
+    val planActive: Flow<Boolean> = context.dataStore.data.map { it[Keys.PLAN_ACTIVE] ?: false }
+    val planDone: Flow<Set<String>> = context.dataStore.data.map { it[Keys.PLAN_DONE] ?: emptySet() }
+
+    suspend fun setPlanActive(on: Boolean) {
+        context.dataStore.edit { it[Keys.PLAN_ACTIVE] = on }
+    }
+
+    suspend fun markPlanDone(key: String) {
+        context.dataStore.edit { it[Keys.PLAN_DONE] = (it[Keys.PLAN_DONE] ?: emptySet()) + key }
+    }
+
+    suspend fun resetPlan() {
+        context.dataStore.edit { it.remove(Keys.PLAN_DONE) }
+    }
+
+    /** The shoes for new workouts. 0 = none. */
+    val currentShoe: Flow<Long> = context.dataStore.data.map { it[Keys.CURRENT_SHOE] ?: 0L }
+
+    suspend fun setCurrentShoe(id: Long) {
+        context.dataStore.edit { it[Keys.CURRENT_SHOE] = id }
+    }
+
     /** Write each saved workout to Health Connect. */
     val healthConnect: Flow<Boolean> = context.dataStore.data.map { it[Keys.HEALTH_CONNECT] ?: false }
 
@@ -265,6 +300,8 @@ class SettingsRepository(private val context: Context) {
             it.remove(Keys.ANN_MODE)
             it[Keys.ANN_DISTANCE] = settings.distanceKm
             it[Keys.ANN_TIME] = settings.timeMin
+            it[Keys.ANN_DUCK] = settings.duckMusic
+            it[Keys.ANN_KM_SUMMARY] = settings.kmSummary
         }
     }
 

@@ -81,7 +81,7 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit) {
+fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit, onShoes: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tracking by TrackingStore.state.collectAsStateWithLifecycle()
@@ -101,6 +101,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
     var annByTime by remember { mutableStateOf(false) }
     var annDistance by remember { mutableStateOf("") }
     var annTime by remember { mutableStateOf("") }
+    var duckMusic by remember { mutableStateOf(true) }
+    var kmSummary by remember { mutableStateOf(true) }
     var minSaveKm by remember { mutableStateOf("") }
     var repWeekly by remember { mutableStateOf(true) }
     var repImprove by remember { mutableStateOf(true) }
@@ -208,6 +210,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
         annByTime = a.byTime
         annDistance = a.distanceKm.toString()
         annTime = a.timeMin.toString()
+        duckMusic = a.duckMusic
+        kmSummary = a.kmSummary
         val r = app.settings.reports.first()
         minSaveKm = r.minSaveKm.toString()
         repWeekly = r.weekly
@@ -290,6 +294,7 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             HorizontalDivider()
 
             Text("אימון", style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(onClick = onShoes, modifier = Modifier.fillMaxWidth()) { Text("👟 נעליים ומעקב בלאי ›") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = autoPause, onCheckedChange = { autoPause = it })
                 Text("השהיה אוטומטית בעצירה (רמזור, מנוחה)")
@@ -339,6 +344,14 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
             }
             if (annByTime) {
                 NumberField("כל כמה דקות", annTime, min = 1.0, max = 120.0) { annTime = it }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = kmSummary, onCheckedChange = { kmSummary = it }, enabled = annEnabled)
+                Text("סיכום אחרי כל ק\"מ (זמן ושינוי מהק\"מ הקודם)")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = duckMusic, onCheckedChange = { duckMusic = it })
+                Text("הנמכת מוזיקה בזמן הודעה")
             }
 
             HorizontalDivider()
@@ -499,7 +512,8 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                     h == null || h !in 100..230 -> "גובה: ערך בין 100 ל-230 ס\"מ."
                     w == null || w !in 30.0..250.0 -> "משקל: ערך בין 30 ל-250 ק\"ג."
                     a !in 10..100 -> "תאריך לידה: הגיל צריך להיות בין 10 ל-100."
-                    annEnabled && !annByDistance && !annByTime -> "הודעות קוליות: בחר מרחק, זמן או שניהם."
+                    annEnabled && !annByDistance && !annByTime && !kmSummary ->
+                        "הודעות קוליות: בחר מרחק, זמן או סיכום לכל ק\"מ."
                     annByDistance && (d == null || d !in 0.1..50.0) -> "מרחק הודעה: ערך בין 0.1 ל-50 ק\"מ."
                     annByTime && (t == null || t !in 1..120) -> "זמן הודעה: ערך בין 1 ל-120 דקות."
                     m == null || m !in 0.0..20.0 -> "אימון קצר: ערך בין 0 ל-20 ק\"מ."
@@ -526,7 +540,9 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit)
                             byDistance = annByDistance,
                             byTime = annByTime,
                             distanceKm = d?.takeIf { it in 0.1..50.0 } ?: defaults.distanceKm,
-                            timeMin = t?.takeIf { it in 1..120 } ?: defaults.timeMin
+                            timeMin = t?.takeIf { it in 1..120 } ?: defaults.timeMin,
+                            duckMusic = duckMusic,
+                            kmSummary = kmSummary
                         )
                     )
                     val oldTr = app.settings.training.first()

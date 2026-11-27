@@ -28,6 +28,9 @@ import com.example.walkrun.data.AnnounceSettings
 import android.util.Log
 import com.example.walkrun.data.TrackPointEntity
 import com.example.walkrun.data.TrainingSettings
+import com.example.walkrun.data.ShoeWear
+import com.example.walkrun.data.PlanSession
+import com.example.walkrun.data.TrainingPlan
 import com.example.walkrun.data.Trend
 import com.example.walkrun.data.Week
 import com.example.walkrun.report.Reports
@@ -63,6 +66,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         const val ACTION_STOP = "com.example.walkrun.STOP"
         private const val EXTRA_TYPE = "type"
         private const val EXTRA_GHOST_ID = "ghost_id"
+        private const val EXTRA_PLAN = "plan_session"
         private const val NOTIF_ID = 1
 
         private const val MAX_ACCURACY_M = 25f
@@ -83,11 +87,13 @@ class TrackingService : LifecycleService(), SensorEventListener {
         private const val PACE_ALERT_GAP_MS = 60_000L
         private const val PACE_ALERT_MIN_M = 200.0
 
-        fun start(context: Context, type: WorkoutType, ghostWorkoutId: Long?) {
+        /** [planKey]: a training plan session ("2-3") whose intervals this workout follows. */
+        fun start(context: Context, type: WorkoutType, ghostWorkoutId: Long?, planKey: String? = null) {
             val intent = Intent(context, TrackingService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_TYPE, type.name)
                 .putExtra(EXTRA_GHOST_ID, ghostWorkoutId ?: -1L)
+                .putExtra(EXTRA_PLAN, planKey)
             ContextCompat.startForegroundService(context, intent)
         }
 
@@ -163,6 +169,9 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private var intervals: Intervals? = null
     private var intervalPhase = -1
     private var intervalWarned = -1
+    private var kmSplitter = KmSplitter()
+    /** The training plan session of this workout. Null = a free workout. */
+    private var planSession: PlanSession? = null
 
     private var tickJob: Job? = null
     private var stopJob: Job? = null
@@ -193,6 +202,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 segmentStartRealtime = SystemClock.elapsedRealtime()
                 if (!startForegroundSafe()) return START_NOT_STICKY
                 val g = intent.getLongExtra(EXTRA_GHOST_ID, -1L).takeIf { it > 0 }
+                planSession = TrainingPlan.byKey(intent.getStringExtra(EXTRA_PLAN))
                 lifecycleScope.launch { begin(g) }
             } else {
                 // A workout is already active. The request is ignored, but the system requires
@@ -228,13 +238,16 @@ class TrackingService : LifecycleService(), SensorEventListener {
         goalM = 0.0; weekDoneM = 0.0; goalAnnounced = false
         monthGoalM = 0.0; monthDoneM = 0.0; monthGoalAnnounced = false
         autoPaused = false; lastPaceAlert = 0L; intervals = null; intervalPhase = -1; intervalWarned = -1
+        kmSplitter = KmSplitter()
     }
 
     private suspend fun begin(requestedGhostId: Long?) {
         profile = app.settings.profile.first()
         announce = app.settings.announce.first()
+        voice.duckMusic = announce.duckMusic
         training = app.settings.training.first()
-        intervals = if (training.intervals) {
+        // A plan session has its own intervals, in place of the intervals in the settings.
+        intervals = planSession?.intervals() ?: if (training.intervals) {
             Intervals(training.workSec * 1000L, training.restSec * 1000L, training.repeats.coerceAtLeast(1))
         } else null
         val goals = app.settings.reports.first()
@@ -275,7 +288,15 @@ class TrackingService : LifecycleService(), SensorEventListener {
         voice.speak(
             if (ghost != null) "האימון התחיל. השוואה לביצוע קודם במסלול." else "האימון התחיל."
         )
-        intervals?.let {
+        val plan = planSession
+        if (plan != null) {
+            voice.speak(
+                "תוכנית אימונים, שבוע ${plan.week}, אימון ${plan.day}. " +
+                    (if (plan.repeats == 1) "ריצה של ${Format.durationSpeech(plan.runSec * 1000L)} ברצף."
+                    else "${plan.repeats} סבבים של ${Format.durationSpeech(plan.runSec * 1000L)} ריצה " +
+                        "ו-${Format.durationSpeech(plan.walkSec * 1000L)} הליכה.")
+            )
+        } else intervals?.let {
             voice.speak("אינטרוולים: ${it.repeats} סבבים של ${Format.durationSpeech(training.workSec * 1000L)} ריצה " +
                 "ו-${Format.durationSpeech(training.restSec * 1000L)} הליכה.")
         }
@@ -364,7 +385,10 @@ class TrackingService : LifecycleService(), SensorEventListener {
         }
         type = autoType()
         val (steps, estimated) = stepsInfo()
+        val shoe = app.settings.currentShoe.first().takeIf { it > 0 }
+            ?.let { app.workouts.getShoe(it) }?.takeIf { !it.retired }
         val workout = WorkoutEntity(
+            shoeId = shoe?.id,
             type = type.name,
             startTime = startWallTime,
             endTime = System.currentTimeMillis(),
@@ -401,7 +425,20 @@ class TrackingService : LifecycleService(), SensorEventListener {
             val left = monthGoalM - monthDoneM - distanceM
             if (left > 0) " ליעד החודשי נותרו ${Format.distanceSpeech(left)}." else ""
         } else ""
-        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$segmentText$goalText$monthText")
+        // A plan session is done when all its run/walk rounds were done (the cool-down is optional).
+        val planText = planSession?.let { s ->
+            if (duration >= s.intervals().totalMs) {
+                app.settings.markPlanDone(s.key)
+                " האימון של שבוע ${s.week}, יום ${s.day} בתוכנית הושלם."
+            } else " האימון בתוכנית לא הושלם, אפשר לחזור עליו."
+        }.orEmpty()
+        val shoeText = shoe?.let { s ->
+            val total = app.workouts.shoeMeters(s.id)
+            if (ShoeWear.crossedLimit(total, distanceM, s.limitKm)) {
+                " הנעליים ${s.name} עברו ${s.limitKm.toInt()} קילומטר. הגיע הזמן להחליף אותן."
+            } else ""
+        }.orEmpty()
+        voice.speak("האימון הסתיים. ${saved?.trendText ?: ""}$recordText$segmentText$goalText$monthText$planText$shoeText")
         saved?.let { HealthSync.afterSave(app, it) }
         WalkRunWidget.refresh(this)
         if (saved != null && reports.onImprovement && (saved.trend == Trend.IMPROVED.name || records.isNotEmpty())) {
@@ -494,6 +531,10 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 segment = segment
             )
         )
+        val kms = kmSplitter.add(distanceM, elapsed)
+        if (announce.enabled && announce.kmSummary) {
+            kms.forEach { voice.speak(KmSplitter.speech(it, Format::durationSpeech)) }
+        }
         publish()
     }
 
@@ -629,11 +670,15 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val p = iv.at(elapsedMs())
         if (p.index != intervalPhase) {
             intervalPhase = p.index
+            val workMs = planSession?.runSec?.times(1000L) ?: (training.workSec * 1000L)
+            val restMs = planSession?.walkSec?.times(1000L) ?: (training.restSec * 1000L)
             voice.speak(
                 when {
-                    p.remainingMs == null -> "סיימת את כל ${iv.repeats} הסבבים. כל הכבוד!"
-                    p.work -> "ריצה! ${Format.durationSpeech(training.workSec * 1000L)}. סבב ${p.round} מתוך ${iv.repeats}."
-                    else -> "הליכה. ${Format.durationSpeech(training.restSec * 1000L)} מנוחה."
+                    p.warmup -> "חימום: הליכה ${Format.durationSpeech(p.remainingMs ?: 0)}."
+                    p.remainingMs == null -> "סיימת את כל ${iv.repeats} הסבבים. כל הכבוד!" +
+                        (planSession?.let { " עכשיו ${Format.durationSpeech(it.cooldownSec * 1000L)} הליכת שחרור." } ?: "")
+                    p.work -> "ריצה! ${Format.durationSpeech(workMs)}. סבב ${p.round} מתוך ${iv.repeats}."
+                    else -> "הליכה. ${Format.durationSpeech(restMs)} מנוחה."
                 }
             )
             return
@@ -649,7 +694,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
     private fun intervalLabel(): String? {
         val iv = intervals ?: return null
         val p = iv.at(elapsedMs())
-        val left = p.remainingMs ?: return "אינטרוולים: הסתיים"
+        val left = p.remainingMs ?: return if (planSession != null) "שחרור: הליכה" else "אינטרוולים: הסתיים"
+        if (p.warmup) return "חימום · הליכה · ${Format.duration(left + 999)}"
         return "${if (p.work) "ריצה" else "הליכה"} · סבב ${p.round}/${iv.repeats} · ${Format.duration(left + 999)}"
     }
 

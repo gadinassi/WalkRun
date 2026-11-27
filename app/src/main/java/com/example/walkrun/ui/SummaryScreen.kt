@@ -187,6 +187,10 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
                 }
             }
 
+            WorkoutShoeRow(app, w.id, w.shoeId) {
+                scope.launch { workout = app.workouts.getWorkout(w.id) }
+            }
+
             if (w.records.isNotEmpty()) {
                 Card(
                     Modifier.fillMaxWidth(),
@@ -208,7 +212,7 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
             CreateSegmentCard(app, points) { segRange = it }
 
             Button(
-                onClick = { start(WorkoutType.from(w.type), w.id) },
+                onClick = { start(WorkoutType.from(w.type), w.id, null) },
                 enabled = tracking.status == TrackingStatus.IDLE && segments.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) { Text("חזור על המסלול והשווה") }
