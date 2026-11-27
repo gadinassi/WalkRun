@@ -325,6 +325,10 @@ fun SettingsScreen(app: WalkRunApp, onBack: () -> Unit, onSignedOut: () -> Unit,
 
             HorizontalDivider()
 
+            HeartRateSettings(app)
+
+            HorizontalDivider()
+
             Text("הודעות קוליות", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("הפעלה", modifier = Modifier.weight(1f))

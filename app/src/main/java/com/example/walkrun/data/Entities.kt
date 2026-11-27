@@ -57,7 +57,10 @@ data class WorkoutEntity(
     /** Personal records set by this workout: RecordKind names, comma-separated. */
     val newRecords: String? = null,
     /** The shoes worn. Null = not recorded. */
-    val shoeId: Long? = null
+    val shoeId: Long? = null,
+    /** Heart rate (bpm). Null = no heart rate sensor in this workout. */
+    val avgHr: Int? = null,
+    val maxHr: Int? = null
 ) {
     fun bestMs(kind: RecordKind): Long? = when (kind) {
         RecordKind.KM1 -> best1kMs
@@ -98,5 +101,7 @@ data class TrackPointEntity(
     val distanceM: Double,
     val steps: Int,
     /** Increments after each pause. */
-    val segment: Int
+    val segment: Int,
+    /** Heart rate at this point (bpm). Null = no sensor, or no recent value. */
+    val heartRate: Int? = null
 )

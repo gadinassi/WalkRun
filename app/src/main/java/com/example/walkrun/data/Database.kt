@@ -110,11 +110,23 @@ interface WorkoutDao {
 
     @Query("DELETE FROM shoes WHERE id = :id")
     suspend fun deleteShoe(id: Long)
+
+    @Insert
+    suspend fun insertPlannedRoute(r: PlannedRouteEntity): Long
+
+    @Query("SELECT * FROM planned_routes ORDER BY createdAt DESC")
+    fun observePlannedRoutes(): Flow<List<PlannedRouteEntity>>
+
+    @Query("SELECT * FROM planned_routes WHERE id = :id")
+    suspend fun getPlannedRoute(id: Long): PlannedRouteEntity?
+
+    @Query("DELETE FROM planned_routes WHERE id = :id")
+    suspend fun deletePlannedRoute(id: Long)
 }
 
 @Database(
-    entities = [WorkoutEntity::class, TrackPointEntity::class, SegmentEntity::class, ShoeEntity::class],
-    version = 5,
+    entities = [WorkoutEntity::class, TrackPointEntity::class, SegmentEntity::class, ShoeEntity::class, PlannedRouteEntity::class],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -163,9 +175,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 6: heart rate, and planned routes. */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE track_points ADD COLUMN heartRate INTEGER")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN avgHr INTEGER")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN maxHr INTEGER")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS planned_routes (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, pointsText TEXT NOT NULL, " +
+                        "lengthM REAL NOT NULL, createdAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "walkrun.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }

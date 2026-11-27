@@ -1,5 +1,12 @@
 package com.example.walkrun.wear
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.SystemClock
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -35,7 +42,7 @@ import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.Wearable
 
 /** Live data of the workout on the phone, with pause / resume / stop. */
-class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener {
+class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener, SensorEventListener {
 
     data class State(
         val status: String = "IDLE",
@@ -45,16 +52,51 @@ class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener {
         val pace: String = "--:--",
         val avg: String = "--:--",
         val interval: String = "",
-        val auto: Boolean = false
+        val auto: Boolean = false,
+        val nav: String = "",
+        val hr: Int? = null
     )
 
     private val state = mutableStateOf(State())
+    private var lastHrSent = 0L
+    private var hrRegistered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.BODY_SENSORS), 1)
+        }
         setContent { MaterialTheme { Screen(state.value, ::send) } }
     }
+
+    /** Heart rate sensor on only while a workout runs on the phone, to save the battery. */
+    private fun updateHrSensor() {
+        val sm = getSystemService(SensorManager::class.java)
+        val want = state.value.status != "IDLE" && state.value.status != "SAVING" &&
+            checkSelfPermission(Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+        if (want && !hrRegistered && sensor != null) {
+            hrRegistered = sm.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        } else if (!want && hrRegistered) {
+            sm.unregisterListener(this)
+            hrRegistered = false
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        val bpm = event.values.firstOrNull()?.toInt() ?: return
+        if (bpm <= 0) return
+        state.value = state.value.copy(hr = bpm)
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastHrSent < 2_000) return
+        lastHrSent = now
+        Wearable.getNodeClient(this).connectedNodes.addOnSuccessListener { nodes ->
+            nodes.forEach { Wearable.getMessageClient(this).sendMessage(it.id, HR_PATH, bpm.toString().toByteArray()) }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     override fun onResume() {
         super.onResume()
@@ -69,6 +111,10 @@ class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener {
 
     override fun onPause() {
         Wearable.getDataClient(this).removeListener(this)
+        if (hrRegistered) {
+            getSystemService(SensorManager::class.java).unregisterListener(this)
+            hrRegistered = false
+        }
         super.onPause()
     }
 
@@ -90,8 +136,11 @@ class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener {
             pace = m.getString("pace", "--:--"),
             avg = m.getString("avg", "--:--"),
             interval = m.getString("interval", ""),
-            auto = m.getBoolean("auto", false)
+            auto = m.getBoolean("auto", false),
+            nav = m.getString("nav", ""),
+            hr = state.value.hr
         )
+        updateHrSensor()
     }
 
     /** Sends a command to every connected phone (normally one). */
@@ -104,6 +153,7 @@ class WatchActivity : ComponentActivity(), DataClient.OnDataChangedListener {
     companion object {
         const val STATE_PATH = "/walkrun/state"
         const val COMMAND_PATH = "/walkrun/cmd"
+        const val HR_PATH = "/walkrun/hr"
     }
 }
 
@@ -130,6 +180,8 @@ private fun Screen(s: WatchActivity.State, send: (String) -> Unit) {
         Text(s.time, fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Text("${s.km} ק\"מ", fontSize = 20.sp)
         Text("קצב ${s.pace} · ממוצע ${s.avg}", fontSize = 12.sp)
+        s.hr?.let { Text("❤ $it", fontSize = 14.sp, color = Color(0xFFFF6E6E)) }
+        if (s.nav.isNotEmpty()) Text(s.nav, fontSize = 11.sp, textAlign = TextAlign.Center)
         if (s.status == "PAUSED") Text(if (s.auto) "עצירה אוטומטית" else "מושהה", fontSize = 12.sp, color = Color(0xFFF9A825))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val paused = s.status == "PAUSED"

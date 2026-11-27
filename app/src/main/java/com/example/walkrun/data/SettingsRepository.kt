@@ -123,6 +123,8 @@ class SettingsRepository(private val context: Context) {
         val DRIVE_BACKUP = booleanPreferencesKey("drive_backup")
         val CURRENT_SHOE = longPreferencesKey("current_shoe_id")
         val PLAN_ACTIVE = booleanPreferencesKey("plan_active")
+        val HR_ADDRESS = stringPreferencesKey("hr_device_address")
+        val HR_NAME = stringPreferencesKey("hr_device_name")
         val PLAN_DONE = stringSetPreferencesKey("plan_done")
         val LAST_BACKUP = longPreferencesKey("last_backup_ms")
         val PACE_ALERT = booleanPreferencesKey("pace_alert")
@@ -242,6 +244,18 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLastBackup(ms: Long) {
         context.dataStore.edit { it[Keys.LAST_BACKUP] = ms }
+    }
+
+    /** The Bluetooth heart rate strap: address and name. Null = none chosen. */
+    val hrDevice: Flow<Pair<String, String>?> = context.dataStore.data.map { p ->
+        p[Keys.HR_ADDRESS]?.let { it to (p[Keys.HR_NAME] ?: it) }
+    }
+
+    suspend fun setHrDevice(address: String?, name: String?) {
+        context.dataStore.edit {
+            if (address == null) { it.remove(Keys.HR_ADDRESS); it.remove(Keys.HR_NAME) }
+            else { it[Keys.HR_ADDRESS] = address; it[Keys.HR_NAME] = name ?: address }
+        }
     }
 
     /** The training plan: on or off, and the sessions done (PlanSession keys like "2-3"). */

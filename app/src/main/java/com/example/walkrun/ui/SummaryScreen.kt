@@ -205,6 +205,9 @@ fun SummaryScreen(app: WalkRunApp, id: Long, onBack: () -> Unit, onRecording: ()
 
             SplitsSection(app, w)
 
+            val userProfile by app.settings.profile.collectAsStateWithLifecycle(initialValue = com.example.walkrun.data.UserProfile())
+            HeartRateCard(points, w.avgHr, w.maxHr, com.example.walkrun.tracking.HrZones.maxHr(userProfile.age))
+
             val profile = remember(points) { Analysis.elevationProfile(points) }
             ElevationCard(profile, w.elevationGainM)
 

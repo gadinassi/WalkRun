@@ -31,7 +31,12 @@ data class TrackingSnapshot(
     /** Paused because the user stopped moving. Resumes by itself. */
     val autoPaused: Boolean = false,
     /** Current interval phase, for example "ריצה · סבב 3/8 · 1:12". Null = no intervals. */
-    val intervalLabel: String? = null
+    val intervalLabel: String? = null,
+    /** Current heart rate (bpm) and zone 1..5 (0 = below the zones). Null = no sensor. */
+    val heartRate: Int? = null,
+    val hrZone: Int = 0,
+    /** Planned route guidance, for example "בעוד 120 מ' פנה ימינה". Null = no planned route. */
+    val navText: String? = null
 )
 
 /** Shared state between TrackingService and the UI. */

@@ -94,7 +94,8 @@ fun AppNav(app: WalkRunApp) {
                 onRecords = { nav.navigate("records") },
                 onStats = { nav.navigate("stats") },
                 onShoes = { nav.navigate("shoes") },
-                onPlan = { nav.navigate("plan") }
+                onPlan = { nav.navigate("plan") },
+                onRoutes = { nav.navigate("routes") }
             )
         }
         composable("stats") {
@@ -136,6 +137,15 @@ fun AppNav(app: WalkRunApp) {
         }
         composable("shoes") {
             ShoesScreen(app, onBack = { nav.popBackStack() })
+        }
+        composable("routes") {
+            PlannedRoutesScreen(
+                app, onBack = { nav.popBackStack() }, onNew = { nav.navigate("route_new") },
+                onRecording = { nav.navigate("record") { launchSingleTop = true } }
+            )
+        }
+        composable("route_new") {
+            RoutePlannerScreen(app, onBack = { nav.popBackStack() })
         }
         composable("plan") {
             PlanScreen(app, onBack = { nav.popBackStack() }, onRecording = { nav.navigate("record") { launchSingleTop = true } })

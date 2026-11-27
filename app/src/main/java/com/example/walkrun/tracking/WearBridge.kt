@@ -18,6 +18,7 @@ import com.google.android.gms.wearable.WearableListenerService
 object WearBridge {
     const val STATE_PATH = "/walkrun/state"
     const val COMMAND_PATH = "/walkrun/cmd"
+    const val HR_PATH = "/walkrun/hr"
     private const val MIN_GAP_MS = 2_000L
     private var lastPush = 0L
     private var lastStatus: TrackingStatus? = null
@@ -36,6 +37,7 @@ object WearBridge {
             dataMap.putString("avg", Format.pace(Format.avgPace(s.elapsedMs, s.distanceM)))
             dataMap.putString("interval", s.intervalLabel ?: "")
             dataMap.putBoolean("auto", s.autoPaused)
+            dataMap.putString("nav", s.navText ?: "")
             dataMap.putLong("at", System.currentTimeMillis()) // Makes every item new, so it is sent.
         }.asPutDataRequest().setUrgent()
         Wearable.getDataClient(context).putDataItem(req)
@@ -46,6 +48,11 @@ object WearBridge {
 /** Receives the watch commands. */
 class WearCommandService : WearableListenerService() {
     override fun onMessageReceived(event: MessageEvent) {
+        // Heart rate from the watch sensor.
+        if (event.path == WearBridge.HR_PATH) {
+            String(event.data).toIntOrNull()?.let { HeartRateHub.update(it, "watch") }
+            return
+        }
         if (event.path != WearBridge.COMMAND_PATH) return
         val action = when (String(event.data)) {
             "pause" -> TrackingService.ACTION_PAUSE

@@ -104,6 +104,17 @@ fun RecordScreen(keepScreenOn: Boolean, onBack: () -> Unit) {
                     "טיפוס (מ')" to s.elevationGainM.roundToInt().toString()
                 )
             )
+            s.heartRate?.let { hr ->
+                Text(
+                    "❤ $hr" + (if (s.hrZone > 0) " · אזור ${s.hrZone} ${com.example.walkrun.tracking.HrZones.NAMES[s.hrZone - 1]}" else ""),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (s.hrZone > 0) ZONE_COLORS[s.hrZone - 1] else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            s.navText?.let {
+                Text("🧭 $it", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
             s.ghostDiffMs?.let { GhostLine(it) }
 
             when (s.status) {

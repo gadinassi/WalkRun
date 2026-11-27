@@ -3,6 +3,9 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Heart rate sensor of the watch, sent to the phone during a workout. -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-feature android:name="android.hardware.sensor.heartrate" android:required="false" />
 
     <application
         android:icon="@mipmap/ic_launcher"

@@ -31,6 +31,9 @@ import com.example.walkrun.data.TrainingSettings
 import com.example.walkrun.data.ShoeWear
 import com.example.walkrun.data.PlanSession
 import com.example.walkrun.data.TrainingPlan
+import com.example.walkrun.data.PlannedRouteEntity
+import com.example.walkrun.data.RouteGeometry
+import com.example.walkrun.data.Turn
 import com.example.walkrun.data.Trend
 import com.example.walkrun.data.Week
 import com.example.walkrun.report.Reports
@@ -67,6 +70,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
         private const val EXTRA_TYPE = "type"
         private const val EXTRA_GHOST_ID = "ghost_id"
         private const val EXTRA_PLAN = "plan_session"
+        /** Program value for a planned route: "route:<id>". */
+        const val ROUTE_PREFIX = "route:"
         private const val NOTIF_ID = 1
 
         private const val MAX_ACCURACY_M = 25f
@@ -86,6 +91,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
         private const val AUTO_RESUME_M = 15f
         private const val PACE_ALERT_GAP_MS = 60_000L
         private const val PACE_ALERT_MIN_M = 200.0
+        private const val ROUTE_OFF_M = 40.0
 
         /** [planKey]: a training plan session ("2-3") whose intervals this workout follows. */
         fun start(context: Context, type: WorkoutType, ghostWorkoutId: Long?, planKey: String? = null) {
@@ -173,6 +179,26 @@ class TrackingService : LifecycleService(), SensorEventListener {
     /** The training plan session of this workout. Null = a free workout. */
     private var planSession: PlanSession? = null
 
+    // Heart rate
+    private val hrMonitor by lazy { HeartRateMonitor(this) }
+    private var hrSum = 0L
+    private var hrCount = 0
+    private var hrMax = 0
+    private var userMaxHr = 180
+
+    // Planned route navigation
+    private var route: PlannedRouteEntity? = null
+    private var routePoints: List<LatLon> = emptyList()
+    private var routeTurns: List<Turn> = emptyList()
+    private var routeAlongM = 0.0
+    private var routeIndex = 0
+    private var nextTurn = 0
+    private var turnFarWarned = -1
+    private var turnNearWarned = -1
+    private var lastOffRouteNav = 0L
+    private var routeEndAnnounced = false
+    private var navText: String? = null
+
     private var tickJob: Job? = null
     private var stopJob: Job? = null
 
@@ -202,8 +228,11 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 segmentStartRealtime = SystemClock.elapsedRealtime()
                 if (!startForegroundSafe()) return START_NOT_STICKY
                 val g = intent.getLongExtra(EXTRA_GHOST_ID, -1L).takeIf { it > 0 }
-                planSession = TrainingPlan.byKey(intent.getStringExtra(EXTRA_PLAN))
-                lifecycleScope.launch { begin(g) }
+                // The program: a plan session key ("2-3") or a planned route ("route:12").
+                val program = intent.getStringExtra(EXTRA_PLAN)
+                planSession = TrainingPlan.byKey(program)
+                val routeId = program?.removePrefix(ROUTE_PREFIX)?.takeIf { program.startsWith(ROUTE_PREFIX) }?.toLongOrNull()
+                lifecycleScope.launch { begin(g, routeId) }
             } else {
                 // A workout is already active. The request is ignored, but the system requires
                 // startForeground() after every startForegroundService(), else the app is stopped.
@@ -239,12 +268,68 @@ class TrackingService : LifecycleService(), SensorEventListener {
         monthGoalM = 0.0; monthDoneM = 0.0; monthGoalAnnounced = false
         autoPaused = false; lastPaceAlert = 0L; intervals = null; intervalPhase = -1; intervalWarned = -1
         kmSplitter = KmSplitter()
+        hrSum = 0; hrCount = 0; hrMax = 0
+        HeartRateHub.clear()
+        route = null; routePoints = emptyList(); routeTurns = emptyList(); routeAlongM = 0.0; routeIndex = 0
+        nextTurn = 0; turnFarWarned = -1; turnNearWarned = -1; lastOffRouteNav = 0L; routeEndAnnounced = false
+        navText = null
     }
 
-    private suspend fun begin(requestedGhostId: Long?) {
+    /** Voice guidance along a planned route: turns ahead, off-route alert, end of the route. */
+    private fun checkRouteGuidance(loc: Location) {
+        val r = route ?: return
+        val pts = routePoints
+        val proj = RouteGeometry.project(pts, LatLon(loc.latitude, loc.longitude), routeIndex) ?: return
+        val now = SystemClock.elapsedRealtime()
+        if (proj.offM > ROUTE_OFF_M) {
+            navText = "מחוץ למסלול · ${proj.offM.toInt()} מ'"
+            if (now - lastOffRouteNav > ALERT_INTERVAL_MS) {
+                lastOffRouteNav = now
+                voice.speak("סטית מהמסלול המתוכנן.")
+            }
+            return
+        }
+        // Progress only goes forward (a little GPS jitter back is ignored).
+        if (proj.alongM >= routeAlongM - 30) {
+            routeAlongM = maxOf(routeAlongM, proj.alongM)
+            routeIndex = proj.index
+        }
+        while (nextTurn < routeTurns.size && routeTurns[nextTurn].atM < routeAlongM - 10) nextTurn++
+        val turn = routeTurns.getOrNull(nextTurn)
+        val left = r.lengthM - routeAlongM
+        navText = if (turn != null) {
+            val d = turn.atM - routeAlongM
+            if (d in 40.0..120.0 && turnFarWarned != nextTurn) {
+                turnFarWarned = nextTurn
+                voice.speak("בעוד ${((d / 10).toInt() * 10)} מטר, ${turn.speech}.")
+            }
+            if (d <= 25 && turnNearWarned != nextTurn) {
+                turnNearWarned = nextTurn
+                voice.speak("${turn.speech}.")
+            }
+            "בעוד ${d.toInt().coerceAtLeast(0)} מ' ${turn.speech}"
+        } else "ישר עד הסוף · נותרו ${Format.km(left.coerceAtLeast(0.0))} ק\"מ"
+        if (left <= 25 && !routeEndAnnounced) {
+            routeEndAnnounced = true
+            voice.speak("הגעת לסוף המסלול המתוכנן.")
+            navText = "הגעת לסוף המסלול"
+        }
+    }
+
+    private suspend fun begin(requestedGhostId: Long?, plannedRouteId: Long? = null) {
+        plannedRouteId?.let { id ->
+            app.workouts.getPlannedRoute(id)?.let { r ->
+                route = r
+                routePoints = r.points
+                routeTurns = RouteGeometry.turns(routePoints)
+                routeTitle = r.name
+            }
+        }
         profile = app.settings.profile.first()
         announce = app.settings.announce.first()
         voice.duckMusic = announce.duckMusic
+        userMaxHr = HrZones.maxHr(profile.age)
+        app.settings.hrDevice.first()?.let { (address, _) -> hrMonitor.connect(address) }
         training = app.settings.training.first()
         // A plan session has its own intervals, in place of the intervals in the settings.
         intervals = planSession?.intervals() ?: if (training.intervals) {
@@ -286,7 +371,11 @@ class TrackingService : LifecycleService(), SensorEventListener {
         startTicker()
         publish()
         voice.speak(
-            if (ghost != null) "האימון התחיל. השוואה לביצוע קודם במסלול." else "האימון התחיל."
+            when {
+                ghost != null -> "האימון התחיל. השוואה לביצוע קודם במסלול."
+                route != null -> "האימון התחיל. ניווט במסלול ${route!!.name}, ${Format.distanceSpeech(route!!.lengthM)}."
+                else -> "האימון התחיל."
+            }
         )
         val plan = planSession
         if (plan != null) {
@@ -387,8 +476,11 @@ class TrackingService : LifecycleService(), SensorEventListener {
         val (steps, estimated) = stepsInfo()
         val shoe = app.settings.currentShoe.first().takeIf { it > 0 }
             ?.let { app.workouts.getShoe(it) }?.takeIf { !it.retired }
+        hrMonitor.disconnect()
         val workout = WorkoutEntity(
             shoeId = shoe?.id,
+            avgHr = if (hrCount > 0) (hrSum / hrCount).toInt() else null,
+            maxHr = hrMax.takeIf { it > 0 },
             type = type.name,
             startTime = startWallTime,
             endTime = System.currentTimeMillis(),
@@ -517,6 +609,12 @@ class TrackingService : LifecycleService(), SensorEventListener {
         currentSpeed = if (loc.hasSpeed()) loc.speed else speed.toFloat()
         segments.last().add(LatLon(loc.latitude, loc.longitude))
         refreshSegmentsSnapshot()
+        val hr = HeartRateHub.current()
+        if (hr != null) {
+            hrSum += hr; hrCount++
+            if (hr > hrMax) hrMax = hr
+        }
+        checkRouteGuidance(loc)
         points.add(
             TrackPointEntity(
                 workoutId = 0,
@@ -528,7 +626,8 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 speedMps = speed.toFloat(),
                 distanceM = distanceM,
                 steps = stepsInfo().first,
-                segment = segment
+                segment = segment,
+                heartRate = hr
             )
         )
         val kms = kmSplitter.add(distanceM, elapsed)
@@ -587,6 +686,7 @@ class TrackingService : LifecycleService(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     private fun stopSensorsAndLocation() {
+        hrMonitor.disconnect()
         fused.removeLocationUpdates(locationCallback)
         sensorManager.unregisterListener(this)
         tickJob?.cancel()
@@ -758,6 +858,14 @@ class TrackingService : LifecycleService(), SensorEventListener {
             )
         }
         ghostDiffMs(e)?.let { sb.append(ghostPhrase(it)) }
+        HeartRateHub.current()?.let { hr ->
+            val z = HrZones.zone(hr, userMaxHr)
+            sb.append("דופק $hr" + (if (z > 0) ", אזור $z, ${HrZones.NAMES[z - 1]}" else "") + ". ")
+        }
+        route?.let { r ->
+            val left = r.lengthM - routeAlongM
+            if (left > 0) sb.append("נותרו ${Format.distanceSpeech(left)} במסלול המתוכנן. ")
+        }
         val toGoal = goalM - weekDoneM - distanceM
         if (goalM > 0 && toGoal > 0) sb.append("ליעד השבועי נותרו ${Format.distanceSpeech(toGoal)}. ")
         return sb.toString()
@@ -846,10 +954,13 @@ class TrackingService : LifecycleService(), SensorEventListener {
                 calories = totalCalories(elapsed),
                 elevationGainM = elevation.gain,
                 segments = segmentsSnapshot,
-                reference = ghost?.path ?: emptyList(),
+                reference = ghost?.path ?: routePoints,
                 ghostDiffMs = ghostDiffMs(elapsed),
                 autoPaused = autoPaused,
-                intervalLabel = intervalLabel()
+                intervalLabel = intervalLabel(),
+                heartRate = HeartRateHub.current(),
+                hrZone = HeartRateHub.current()?.let { HrZones.zone(it, userMaxHr) } ?: 0,
+                navText = navText
             )
         TrackingStore.update(snapshot)
         WearBridge.push(this, snapshot)

@@ -76,6 +76,13 @@ class WorkoutRepository(private val db: AppDatabase) {
         dao.deleteShoe(id)
     }
 
+    // ---------------- Planned routes ----------------
+
+    val plannedRoutes: Flow<List<PlannedRouteEntity>> = dao.observePlannedRoutes()
+    suspend fun addPlannedRoute(r: PlannedRouteEntity): Long = dao.insertPlannedRoute(r)
+    suspend fun getPlannedRoute(id: Long): PlannedRouteEntity? = dao.getPlannedRoute(id)
+    suspend fun deletePlannedRoute(id: Long) = dao.deletePlannedRoute(id)
+
     // ---------------- Segments ----------------
 
     val segments: Flow<List<SegmentEntity>> = dao.observeSegments()

@@ -59,7 +59,8 @@ fun HomeScreen(
     onRecords: () -> Unit,
     onStats: () -> Unit,
     onShoes: () -> Unit,
-    onPlan: () -> Unit
+    onPlan: () -> Unit,
+    onRoutes: () -> Unit
 ) {
     val reports by app.settings.reports.collectAsStateWithLifecycle(initialValue = ReportSettings())
     val training by app.settings.training.collectAsStateWithLifecycle(initialValue = TrainingSettings())
@@ -168,6 +169,7 @@ fun HomeScreen(
                     }
                 }
             }
+            item { TextButton(onClick = onRoutes) { Text("🗺️ מסלולים מתוכננים וניווט ›") } }
             if (reports.weeklyGoalKm > 0) {
                 item {
                     val (from, to) = remember(workouts) { Week.currentRange() }
