@@ -9,12 +9,14 @@ plugins {
 
 android {
     namespace = "com.example.walkrun"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.walkrun"
+        // The Google Play id. Play rejects com.example.*, and the id can never change after publishing.
+        // Debug builds keep the old id (see androidComponents below) so the phone's current app keeps its data.
+        applicationId = "com.gadinassi.walkrun"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -37,6 +39,19 @@ android {
         }
     } else null
 
+    // The Google Play UPLOAD key (signing/upload.properties, not in git). Play rejects debug-signed bundles.
+    // Without the file, the release bundle is left unsigned instead of being signed with a debug key.
+    val uploadProps = rootProject.file("signing/upload.properties")
+    val uploadKey = if (uploadProps.exists()) {
+        val p = Properties().apply { uploadProps.inputStream().use { load(it) } }
+        signingConfigs.create("upload") {
+            storeFile = rootProject.file("signing/" + p.getProperty("storeFile"))
+            storePassword = p.getProperty("storePassword")
+            keyAlias = p.getProperty("keyAlias")
+            keyPassword = p.getProperty("keyPassword")
+        }
+    } else null
+
     buildTypes {
         debug {
             walkrunKey?.let { signingConfig = it }
@@ -44,7 +59,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = walkrunKey ?: signingConfigs.getByName("debug")
+            signingConfig = uploadKey
         }
     }
     testOptions {
@@ -62,6 +77,11 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+// Debug builds keep the old id: the installed app, its data and its Google Cloud OAuth client stay as they are.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { it.applicationId.set("com.example.walkrun") }
 }
 
 dependencies {
